@@ -12,7 +12,7 @@ import io
 import json
 import threading
 import urllib.request
-from datetime import date, datetime, time as dtime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -245,16 +245,47 @@ st.markdown(
 CITIES = list_cities()
 DEFAULT_CITY_IDX = CITIES.index("서울") if "서울" in CITIES else 0
 
+CUR_YEAR = date.today().year
+YEARS = list(range(CUR_YEAR, 1899, -1))          # 최근 연도부터 역순
+DEFAULT_YEAR_IDX = YEARS.index(1990) if 1990 in YEARS else 0
+
 with st.form("birth_form"):
-    c1, c2 = st.columns(2)
-    with c1:
-        birth_date = st.date_input(
-            "생년월일", value=date(1990, 1, 1),
-            min_value=date(1900, 1, 1), max_value=date.today(),
-        )
+    st.markdown(
+        "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일</p>",
+        unsafe_allow_html=True,
+    )
+    dc1, dc2, dc3 = st.columns(3)
+    birth_year = dc1.selectbox(
+        "년", YEARS, index=DEFAULT_YEAR_IDX, format_func=lambda y: f"{y}년",
+        label_visibility="collapsed",
+    )
+    birth_month = dc2.selectbox(
+        "월", list(range(1, 13)), index=0, format_func=lambda m: f"{m}월",
+        label_visibility="collapsed",
+    )
+    birth_day = dc3.selectbox(
+        "일", list(range(1, 32)), index=0, format_func=lambda d: f"{d}일",
+        label_visibility="collapsed",
+    )
+
+    st.markdown(
+        "<p style='font-size:13px; color:var(--ink-soft); margin:10px 0 6px;'>태어난 시각</p>",
+        unsafe_allow_html=True,
+    )
+    tc1, tc2 = st.columns(2)
+    birth_hour = tc1.selectbox(
+        "시", list(range(0, 24)), index=12, format_func=lambda h: f"{h}시",
+        label_visibility="collapsed",
+    )
+    birth_minute = tc2.selectbox(
+        "분", list(range(0, 60)), index=0, format_func=lambda m: f"{m}분",
+        label_visibility="collapsed",
+    )
+
+    gc1, gc2 = st.columns(2)
+    with gc1:
         gender_label = st.radio("성별", ["남", "여"], horizontal=True)
-    with c2:
-        birth_time = st.time_input("태어난 시각", value=dtime(12, 0))
+    with gc2:
         place = st.selectbox("태어난 지역", CITIES, index=DEFAULT_CITY_IDX)
 
     with st.expander("시간 설정 — 결과가 다르게 나온다면 여기를 확인하세요"):
@@ -339,8 +370,8 @@ def _log_usage(chart):
 if submitted:
     try:
         chart = build_chart(
-            birth_date.year, birth_date.month, birth_date.day,
-            birth_time.hour, birth_time.minute,
+            birth_year, birth_month, birth_day,
+            birth_hour, birth_minute,
             is_male=(gender_label == "남"),
             place=place,
             jasi_school=jasi_school,
@@ -479,6 +510,55 @@ def render_v2_detail(chart, a2, scores2):
 
     st.markdown("**판정 근거**", unsafe_allow_html=True)
     st.markdown(render_reasons_html(a2.reasons), unsafe_allow_html=True)
+
+
+def render_v1_detail(chart, a1, scores1):
+    st.markdown("**원국(사주 네 기둥)**", unsafe_allow_html=True)
+    st.markdown(render_pillars_table_html(chart), unsafe_allow_html=True)
+
+    st.markdown("**오행 분포**", unsafe_allow_html=True)
+    st.markdown(render_element_bars_html(chart), unsafe_allow_html=True)
+
+    st_ = a1.strength
+    st.markdown(
+        "<div class='info-block'>"
+        "<p class='label'>강약 비율</p>"
+        f"<p style='font-size:16px; font-weight:700; margin:2px 0 8px;'>"
+        f"{st_.label} · 아군 {st_.ally:.1f} vs 적군 {st_.enemy:.1f} ({st_.ratio:.0%})</p>"
+        f"<p class='label'>{st_.description}</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(render_yongsin_chips_html(a1), unsafe_allow_html=True)
+
+    if a1.johu_note:
+        st.markdown(
+            "<div class='info-block'><p class='label'>조후(계절 기운) 보정</p>"
+            f"<p style='margin:2px 0;'>{a1.johu_note}</p></div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("**판정 근거**", unsafe_allow_html=True)
+    st.markdown(render_reasons_html(a1.reasons), unsafe_allow_html=True)
+
+    st.markdown("**대운 (10년 주기) 요약**", unsafe_allow_html=True)
+    today_age = date.today().year - chart.birth_local.year + 1
+    st.markdown(render_daeun_table_html(scores1, today_age), unsafe_allow_html=True)
+
+
+def render_daeun_table_html(scores, current_age):
+    head = "<tr><th>나이</th><th>대운</th><th>등급</th><th>%</th></tr>"
+    body = ""
+    for s in scores:
+        age_start = s["age"]
+        cls = "current" if age_start <= current_age < age_start + 10 else ""
+        body += (
+            f"<tr><td class='{cls}'>{age_start}~{age_start + 9}세</td>"
+            f"<td class='{cls}'>{s['pillar'].hanja}</td>"
+            f"<td class='{cls}'>{s['grade']} {s['stars']}</td>"
+            f"<td class='{cls}'>{s['percent']}%</td></tr>"
+        )
+    return f"<table class='seun-table'>{head}{body}</table>"
 
 
 def render_daeun_section(chart, a2, scores2):
@@ -660,14 +740,7 @@ if "chart" in st.session_state:
 
     with st.expander("V1 간편 결과 함께 보기 (더 단순한 예전 방식)"):
         st.caption("V1은 억부용신만 반영한 간단 버전입니다. 기준으로는 위 V2를 참고하세요.")
-        st.markdown(
-            "<pre style='overflow-x:auto; white-space:pre; font-size:12px; "
-            "line-height:1.6; background:var(--hanji-card); padding:10px; "
-            "border-radius:8px;'>" + render_text(chart, today=date.today())
-            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            + "</pre>",
-            unsafe_allow_html=True,
-        )
+        render_v1_detail(chart, a1, scores1)
 
     # ── 내보내기 ────────────────────────────────────────────
     st.markdown("#### 결과 내보내기")
