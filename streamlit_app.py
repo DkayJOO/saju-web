@@ -277,7 +277,7 @@ with st.form("birth_form"):
     )
 
     st.markdown(
-        "<p style='font-size:13px; color:var(--ink-soft); margin:10px 0 6px;'>태어난 시각 (모를경우 12시로 선택) </p>",
+        "<p style='font-size:13px; color:var(--ink-soft); margin:10px 0 6px;'>태어난 시각 (모를경우 12시 선택) </p>",
         unsafe_allow_html=True,
     )
     tc1, tc2 = st.columns(2)
