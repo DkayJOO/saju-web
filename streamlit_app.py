@@ -521,10 +521,10 @@ def render_v2_detail(chart, a2, scores2):
 
 
 def render_v1_detail(chart, a1, scores1):
-    st.markdown("**원국(사주 네 기둥)**", unsafe_allow_html=True)
+    st.markdown("**원국(사주 네 기둥) (V1)**", unsafe_allow_html=True)
     st.markdown(render_pillars_table_html(chart), unsafe_allow_html=True)
 
-    st.markdown("**오행 분포**", unsafe_allow_html=True)
+    st.markdown("**오행 분포 (V1)**", unsafe_allow_html=True)
     st.markdown(render_element_bars_html(chart), unsafe_allow_html=True)
 
     st_ = a1.strength
@@ -546,10 +546,10 @@ def render_v1_detail(chart, a1, scores1):
             unsafe_allow_html=True,
         )
 
-    st.markdown("**판정 근거**", unsafe_allow_html=True)
+    st.markdown("**판정 근거 (V1)**", unsafe_allow_html=True)
     st.markdown(render_reasons_html(a1.reasons), unsafe_allow_html=True)
 
-    st.markdown("**대운 (10년 주기) 요약**", unsafe_allow_html=True)
+    st.markdown("**간소화 분석에 따른 대운 (10년 주기) 요약 (V1)**", unsafe_allow_html=True)
     today_age = date.today().year - chart.birth_local.year + 1
     st.markdown(render_daeun_table_html(scores1, today_age), unsafe_allow_html=True)
 
