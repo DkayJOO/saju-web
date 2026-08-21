@@ -110,12 +110,16 @@ CUSTOM_CSS = """
     padding: 6px 0 2px;
 }
 .app-header .title {
+    display: inline-block;
     font-size: 25px;
     font-weight: 700;
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
         "Malgun Gothic", "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
+.app-header .title svg { vertical-align: -6px; margin-right: 4px; }
 .app-sub {
     text-align: center;
     color: var(--ink-soft);
@@ -226,7 +230,12 @@ h1, h2, h3 { color: var(--ink) !important; }
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.markdown(
-    "<div class='app-header'><span class='title'>🀄 사주풀이</span></div>"
+    "<div class='app-header'><span class='title'>"
+    "<svg width='26' height='26' viewBox='0 0 26 26' xmlns='http://www.w3.org/2000/svg'>"
+    "<rect x='1' y='1' width='24' height='24' rx='6' fill='#D85A30'/>"
+    "<text x='13' y='18' font-size='13' text-anchor='middle' fill='#FBF7EE' "
+    "font-family='sans-serif'>命</text></svg>"
+    "사주풀이</span></div>"
     "<div class='app-sub'>생년월일시로 원국·강약·용신·대운을 풀이합니다"
     "</div>",
     unsafe_allow_html=True,
