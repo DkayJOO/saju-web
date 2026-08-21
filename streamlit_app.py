@@ -111,7 +111,7 @@ CUSTOM_CSS = """
 }
 .app-header .title {
     font-size: 25px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
         "Malgun Gothic", "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
@@ -145,10 +145,10 @@ CUSTOM_CSS = """
     border-radius: 8px;
     background: var(--seal);
     color: var(--hanji-bg);
-    font-weight: 600;
+    font-weight: 700;
     margin-bottom: 8px;
 }
-.v2-title { font-size: 18px; font-weight: 600; color: var(--seal-text); margin: 0 0 4px; }
+.v2-title { font-size: 18px; font-weight: 700; color: var(--seal-text); margin: 0 0 4px; }
 .v2-desc { font-size: 13px; color: var(--seal-dark); line-height: 1.6; }
 .ai-box {
     background: var(--hanji-card);
@@ -179,7 +179,7 @@ h1, h2, h3 { color: var(--ink) !important; }
     word-break: keep-all;
 }
 .pillar-table th { background: var(--hanji-card); color: var(--ink-soft); font-weight: 500; }
-.pillar-table td.hanja { font-size: 22px; font-weight: 600; padding: 8px 2px; }
+.pillar-table td.hanja { font-size: 22px; font-weight: 700; padding: 8px 2px; }
 .pillar-table td.label { color: var(--ink-soft); font-size: 11px; }
 
 .elem-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -220,7 +220,7 @@ h1, h2, h3 { color: var(--ink) !important; }
     color: var(--ink);
 }
 .seun-table th { background: var(--hanji-card); color: var(--ink-soft); font-weight: 500; }
-.seun-table td.current { background: var(--hanji-card); font-weight: 600; }
+.seun-table td.current { background: var(--hanji-card); font-weight: 700; }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -406,7 +406,7 @@ def render_strength_block_html(a2):
     return (
         "<div class='info-block'>"
         f"<p class='label'>강약 비율</p>"
-        f"<p style='font-size:16px; font-weight:600; margin:2px 0 8px;'>"
+        f"<p style='font-size:16px; font-weight:700; margin:2px 0 8px;'>"
         f"{st_.label} · 아군 {st_.ally:.1f} vs 적군 {st_.enemy:.1f} ({st_.ratio:.0%})</p>"
         f"{boundary_note}"
         "</div>"
