@@ -16,10 +16,12 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas as pdfcanvas
 
 from saju_app import (
-    __version__,
     build_chart,
     analyze,
     analyze_v2,
@@ -69,6 +71,12 @@ st.set_page_config(
 )
 
 FONT_PATH = "fonts/NotoSansKR-Regular.ttf"
+try:
+    pdfmetrics.registerFont(TTFont("NotoSansKR", FONT_PATH))
+    _PDF_FONT_OK = True
+except Exception:
+    _PDF_FONT_OK = False
+
 
 # ──────────────────────────────────────────────────────────────
 # 한지·먹빛 테마 CSS (라이트: 한지+주색, 다크: 먹지+금박)
@@ -606,95 +614,34 @@ def render_daeun_section(chart, a2, scores2):
                 )
 
 
-def make_summary_image(chart, a2):
-    """공유용 요약 카드 이미지(PNG bytes)를 만듭니다."""
-    W, H = 900, 720
-    bg = (251, 247, 238)
-    ink = (44, 44, 42)
-    seal = (216, 90, 48)
-    card = (250, 238, 218)
 
-    img = Image.new("RGB", (W, H), bg)
-    d = ImageDraw.Draw(img)
-
-    def font(size):
-        return ImageFont.truetype(FONT_PATH, size)
-
-    def center_text(y, text, size, color=ink):
-        f = font(size)
-        bbox = d.textbbox((0, 0), text, font=f)
-        w = bbox[2] - bbox[0]
-        d.text(((W - w) / 2, y), text, font=f, fill=color)
-
-    def wrapped(y, text, size, color, max_width, indent=60, line_gap=10):
-        f = font(size)
-        words = text
-        lines, cur = [], ""
-        for ch in words:
-            trial = cur + ch
-            bbox = d.textbbox((0, 0), trial, font=f)
-            if bbox[2] - bbox[0] > max_width and cur:
-                lines.append(cur)
-                cur = ch
-            else:
-                cur = trial
-        if cur:
-            lines.append(cur)
-        for line in lines:
-            d.text((indent, y), line, font=f, fill=color)
-            y += size + line_gap
-        return y
-
-    d.rectangle([0, 0, W, 90], fill=seal)
-    center_text(24, "사주풀이 · V2 정밀 분석", 30, (251, 247, 238))
-
-    y = 130
-    nickname = ILGAN_DESC[chart.day_gan][0]
-    center_text(y, f"일간 {nickname} · {a2.strength.label}", 40, ink)
-    y += 70
-
-    pillars = [("년주", chart.year), ("월주", chart.month),
-               ("일주", chart.day), ("시주", chart.hour)]
-    box_w = (W - 120) // 4
-    for i, (label, p) in enumerate(pillars):
-        x = 60 + i * box_w
-        d.rounded_rectangle([x, y, x + box_w - 16, y + 160], radius=10, fill=card)
-        f1 = font(18)
-        bbox = d.textbbox((0, 0), label, font=f1)
-        d.text((x + (box_w - 16 - (bbox[2] - bbox[0])) / 2, y + 12),
-                label, font=f1, fill=(95, 94, 90))
-        f2 = font(40)
-        bbox = d.textbbox((0, 0), p.hanja, font=f2)
-        d.text((x + (box_w - 16 - (bbox[2] - bbox[0])) / 2, y + 60),
-                p.hanja, font=f2, fill=ink)
-    y += 200
-
-    yong = ", ".join(a2.yongsin) if a2.yongsin else "-"
-    gi = ", ".join(a2.gisin) if a2.gisin else "-"
-    d.text((60, y), f"용신(도움되는 기운): {yong}", font=font(26), fill=(20, 100, 80))
-    y += 46
-    d.text((60, y), f"기신(피해야 할 기운): {gi}", font=font(26), fill=seal)
-    y += 60
-
-    if a2.special:
-        d.text((60, y), f"특수격: {a2.special['name']}", font=font(24), fill=ink)
-        y += 50
-
-    y += 10
-    d.line([60, y, W - 60, y], fill=(210, 200, 180), width=2)
-    y += 24
-    y = wrapped(
-        y,
-        "이 결과는 명리학이라는 전통 해석 체계를 코드로 옮긴 것으로, "
-        "과학적으로 검증된 예측이 아닙니다. 자기 성찰의 참고 자료로만 사용하세요.",
-        18, (95, 94, 90), W - 120,
-    )
-
-    y += 20
-    center_text(y, f"saju-app v{__version__}", 16, (150, 145, 130))
-
+def make_pdf_bytes(title, text):
+    """리포트 텍스트(TXT)를 그대로 PDF 페이지에 옮겨 담습니다."""
+    font_name = "NotoSansKR" if _PDF_FONT_OK else "Helvetica"
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    c = pdfcanvas.Canvas(buf, pagesize=A4)
+    width, height = A4
+    margin_x, margin_top, margin_bottom = 40, 40, 40
+    font_size, line_gap = 9, 13
+
+    c.setFont(font_name, 13)
+    c.drawString(margin_x, height - margin_top, title)
+    y = height - margin_top - 26
+    c.setFont(font_name, font_size)
+
+    max_chars = int((width - 2 * margin_x) / (font_size * 0.62))
+    for raw_line in text.splitlines():
+        line = raw_line if raw_line else " "
+        chunks = [line[i:i + max_chars] for i in range(0, len(line), max_chars)] or [" "]
+        for chunk in chunks:
+            if y < margin_bottom:
+                c.showPage()
+                c.setFont(font_name, font_size)
+                y = height - margin_top
+            c.drawString(margin_x, y, chunk)
+            y -= line_gap
+
+    c.save()
     return buf.getvalue()
 
 
@@ -746,7 +693,7 @@ if "chart" in st.session_state:
     st.markdown("#### 결과 내보내기")
     json_str = export_json(chart, a2=a2)
     txt_str = export_text(chart, a2=a2, today=date.today())
-    img_bytes = make_summary_image(chart, a2)
+    pdf_bytes = make_pdf_bytes(f"사주풀이 결과 — {chart.birth_local:%Y-%m-%d %H:%M}", txt_str)
 
     fname_base = f"saju_{chart.birth_local:%Y%m%d_%H%M}"
     ec1, ec2, ec3 = st.columns(3)
@@ -754,14 +701,16 @@ if "chart" in st.session_state:
                          mime="application/json", use_container_width=True)
     ec2.download_button("TXT", txt_str, file_name=f"{fname_base}.txt",
                          mime="text/plain", use_container_width=True)
-    ec3.download_button("이미지", img_bytes, file_name=f"{fname_base}.png",
-                         mime="image/png", use_container_width=True)
+    ec3.download_button("PDF", pdf_bytes, file_name=f"{fname_base}.pdf",
+                         mime="application/pdf", use_container_width=True)
 
     st.markdown(
         "<div class='ai-box'>"
-        "💬 내려받은 <b>JSON</b> 또는 <b>TXT</b> 파일을 ChatGPT, Claude 같은 "
-        "AI 챗봇에 올리고 <i>\"이 사주 결과를 참고해서 올해 이직 시기가 궁금해\"</i> "
-        "처럼 물어보면, 이 리포트에 담긴 근거를 바탕으로 추가 질문에 답해줍니다."
+        "💬 내려받은 JSON 또는 TXT 파일을 ChatGPT·Claude 같은 AI 챗봇에 올리고 "
+        "추가로 궁금한 점을 물어보세요.<br>"
+        "👥 두 명 이상의 궁합이 궁금하면, 각자 결과를 따로 받아 파일 여러 개를 "
+        "한 번에 올려서 물어보면 됩니다.<br>"
+        "📄 PDF는 사람이 직접 읽거나 인쇄·보관용으로 쓰기 좋습니다."
         "</div>",
         unsafe_allow_html=True,
     )
