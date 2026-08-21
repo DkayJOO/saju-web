@@ -97,6 +97,8 @@ CUSTOM_CSS = """
 }
 .stApp {
     background-color: var(--hanji-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+        "Malgun Gothic", "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
 }
 .block-container {
     max-width: 480px;
@@ -127,9 +129,13 @@ CUSTOM_CSS = """
 .app-header .title {
     font-size: 26px;
     line-height: 1.4;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--ink);
     white-space: nowrap;
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+        "Malgun Gothic", "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
 }
 .app-sub {
     text-align: center;
@@ -199,8 +205,8 @@ h1, h2, h3 { color: var(--ink) !important; }
 
 .elem-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .elem-row .name { width: 28px; font-size: 13px; color: var(--ink-soft); flex-shrink: 0; }
-.elem-row .bar-bg { flex: 1; height: 12px; border-radius: 6px; background: var(--hanji-card); overflow: hidden; }
-.elem-row .bar-fill { height: 100%; background: var(--seal); border-radius: 6px; }
+.elem-row .bar-bg { display: block; flex: 1; height: 12px; border-radius: 6px; background: var(--hanji-card); overflow: hidden; }
+.elem-row .bar-fill { display: block; height: 100%; background: var(--seal); border-radius: 6px; }
 .elem-row .val { width: 34px; font-size: 12px; color: var(--ink-soft); text-align: right; flex-shrink: 0; }
 
 .info-block {
@@ -224,8 +230,8 @@ h1, h2, h3 { color: var(--ink) !important; }
 
 .reason-list { font-size: 13px; color: var(--ink); line-height: 1.8; padding-left: 18px; margin: 0 0 12px; }
 
-.daeun-bar-bg { flex: 1; height: 10px; border-radius: 5px; background: rgba(128,128,128,0.15); overflow: hidden; }
-.daeun-bar-fill { height: 100%; background: var(--seal); border-radius: 5px; }
+.daeun-bar-bg { display: block; flex: 1; height: 10px; border-radius: 5px; background: rgba(128,128,128,0.15); overflow: hidden; }
+.daeun-bar-fill { display: block; height: 100%; background: var(--seal); border-radius: 5px; }
 
 .seun-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
 .seun-table th, .seun-table td {
