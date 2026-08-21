@@ -10,6 +10,7 @@ streamlit_app.py — 사주풀이 웹앱 (Streamlit)
 
 import io
 import json
+import re
 import threading
 import urllib.request
 from datetime import date, datetime
@@ -86,7 +87,7 @@ def friendly_grade_label(raw_grade):
     info = GRADE_FRIENDLY.get(raw_grade)
     if not info:
         return raw_grade
-    return f"{info['label']} (구: {raw_grade})"
+    return f"{info['label']} ({raw_grade})"
 
 
 def grade_caption(raw_grade):
@@ -99,13 +100,29 @@ def grade_caption(raw_grade):
 GRADE_LEGEND_TEXT = (
     "○ 등급 이름 안내\n"
     "  이 리포트의 '등급'은 좋고 나쁨을 매기는 게 아니라, 그 시기에 필요한\n"
-    "  태도를 알려주는 이름입니다. 전통 명리 용어(구)도 함께 적어둡니다.\n"
+    "  태도를 알려주는 이름입니다. 전통 명리 용어도 괄호로 함께 적어둡니다.\n"
     + "\n".join(
-        f"  · {info['label']} (구: {raw}) — {info['desc']}. {info['tip']}"
+        f"  · {info['label']} ({raw}) — {info['desc']}. {info['tip']}"
         for raw, info in GRADE_FRIENDLY.items()
     )
     + "\n"
 )
+
+# TXT/PDF 본문 안의 대운·세운 줄만 정확히 골라 등급을 순화합니다.
+# 이 리포트에서 등급 뒤에 막대그래프(█░ 20칸)가 붙는 자리는 대운/세운
+# 줄뿐이라("격국 교차검증 · 보통" 같은 문장에는 막대가 없음), 이 패턴만
+# 골라 바꾸면 다른 문장을 건드릴 위험 없이 안전합니다.
+_GRADE_LINE_RE = re.compile(
+    r"([█░]{20} )("
+    + "|".join(re.escape(g) for g in sorted(GRADE_FRIENDLY, key=len, reverse=True))
+    + r")"
+)
+
+
+def patch_grade_lines(text):
+    def _sub(m):
+        return m.group(1) + friendly_grade_label(m.group(2))
+    return _GRADE_LINE_RE.sub(_sub, text)
 
 # ──────────────────────────────────────────────────────────────
 # 기본 설정
@@ -801,7 +818,9 @@ if "chart" in st.session_state:
     # ── 내보내기 ────────────────────────────────────────────
     st.markdown("#### 결과 내보내기")
     json_str = augment_grades_in_json(chart, a2)
-    txt_str = GRADE_LEGEND_TEXT + "\n" + export_text(chart, a2=a2, today=date.today())
+    txt_str = GRADE_LEGEND_TEXT + "\n" + patch_grade_lines(
+        export_text(chart, a2=a2, today=date.today())
+    )
     pdf_bytes = make_pdf_bytes(f"사주풀이 결과 — {chart.birth_local:%Y-%m-%d %H:%M}", txt_str)
 
     fname_base = f"saju_{chart.birth_local:%Y%m%d_%H%M}"
