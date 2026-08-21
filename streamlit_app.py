@@ -649,7 +649,7 @@ def render_v1_detail(chart, a1, scores1):
     st.markdown("**판정 근거 (V1)**", unsafe_allow_html=True)
     st.markdown(render_reasons_html(a1.reasons), unsafe_allow_html=True)
 
-    st.markdown("**V1 분석에 따른 대운 (10년 주기) 요약**", unsafe_allow_html=True)
+    st.markdown("**V1 분석에 따른 (10년 주기) 운세 요약**", unsafe_allow_html=True)
     today_age = date.today().year - chart.birth_local.year + 1
     st.markdown(render_daeun_table_html(scores1, today_age), unsafe_allow_html=True)
 
@@ -808,7 +808,7 @@ if "chart" in st.session_state:
     with st.expander("V2 상세 리포트 펼쳐보기 (지장간·통근·계절·종격 반영)", expanded=False):
         render_v2_detail(chart, a2, scores2)
 
-    st.markdown("#### 대운 (10년 주기)")
+    st.markdown("#### 10년 주기 운세")
     render_daeun_section(chart, a2, scores2)
 
     with st.expander("V1 간편 결과 함께 보기 (더 단순한 예전 방식)"):
