@@ -255,7 +255,7 @@ DEFAULT_CITY_IDX = CITIES.index("서울") if "서울" in CITIES else 0
 
 CUR_YEAR = date.today().year
 YEARS = list(range(CUR_YEAR, 1899, -1))          # 최근 연도부터 역순
-DEFAULT_YEAR_IDX = YEARS.index(1990) if 1990 in YEARS else 0
+DEFAULT_YEAR_IDX = YEARS.index(1980) if 1980 in YEARS else 0
 
 with st.form("birth_form"):
     st.markdown(
