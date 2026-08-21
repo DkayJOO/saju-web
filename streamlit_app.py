@@ -259,7 +259,7 @@ DEFAULT_YEAR_IDX = YEARS.index(1980) if 1980 in YEARS else 0
 
 with st.form("birth_form"):
     st.markdown(
-        "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일</p>",
+        "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일 (양력)</p>",
         unsafe_allow_html=True,
     )
     dc1, dc2, dc3 = st.columns(3)
@@ -277,7 +277,7 @@ with st.form("birth_form"):
     )
 
     st.markdown(
-        "<p style='font-size:13px; color:var(--ink-soft); margin:10px 0 6px;'>태어난 시각</p>",
+        "<p style='font-size:13px; color:var(--ink-soft); margin:10px 0 6px;'>태어난 시각 (모를경우 12시로 선택) </p>",
         unsafe_allow_html=True,
     )
     tc1, tc2 = st.columns(2)
