@@ -105,37 +105,16 @@ CUSTOM_CSS = """
     padding-top: 1.5rem;
 }
 .app-header {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    text-align: center;
     margin-bottom: 4px;
-    padding: 4px 0;
-    overflow: visible;
-}
-.app-header .seal {
-    flex-shrink: 0;
-    display: flex;
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    background: var(--seal);
-    color: var(--hanji-bg);
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    line-height: 1;
+    padding: 6px 0 2px;
 }
 .app-header .title {
-    font-size: 26px;
-    line-height: 1.4;
-    font-weight: 700;
+    font-size: 25px;
+    font-weight: 600;
     color: var(--ink);
-    white-space: nowrap;
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
         "Malgun Gothic", "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
 }
 .app-sub {
     text-align: center;
@@ -247,8 +226,7 @@ h1, h2, h3 { color: var(--ink) !important; }
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.markdown(
-    "<div class='app-header'><span class='seal'>命</span>"
-    "<span class='title'>사주풀이</span></div>"
+    "<div class='app-header'><span class='title'>🀄 사주풀이</span></div>"
     "<div class='app-sub'>생년월일시로 원국·강약·용신·대운을 풀이합니다"
     "</div>",
     unsafe_allow_html=True,
