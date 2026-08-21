@@ -255,7 +255,7 @@ DEFAULT_CITY_IDX = CITIES.index("서울") if "서울" in CITIES else 0
 
 CUR_YEAR = date.today().year
 YEARS = list(range(CUR_YEAR, 1899, -1))          # 최근 연도부터 역순
-DEFAULT_YEAR_IDX = YEARS.index(1980) if 1980 in YEARS else 0
+DEFAULT_YEAR_IDX = YEARS.index(1990) if 1990 in YEARS else 0
 
 st.markdown(
     "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일 (양력)</p>",
@@ -353,9 +353,17 @@ def _log_usage(chart):
     """[접속일시(KST), 성별, 연도, 월, 일, 시, 장소, IP] 한 줄을 구글시트 'log'
     탭에 남깁니다. 웹 요청을 막지 않도록 별도 스레드에서 실행하고, 실패해도
     (오프라인·URL 미설정·응답 지연 등) 계산 결과 표시에는 영향을 주지 않습니다.
+
+    st.secrets["LOG_SECRET"]에 등록된 비밀 토큰을 함께 보내고, Apps Script
+    쪽에서 이 토큰이 일치할 때만 기록하도록 해서 URL만 아는 제3자가 가짜
+    로그를 대량으로 남기지 못하게 막습니다. 이 값은 서버(Python)에서만
+    쓰이고 브라우저로는 전달되지 않아 개발자도구로도 볼 수 없습니다.
     """
     if not LOG_WEBHOOK_URL:
         return
+    log_secret = st.secrets.get("LOG_SECRET", "")
+    if not log_secret:
+        return  # 비밀 토큰이 설정 안 돼 있으면 로그를 남기지 않습니다.
 
     def _send():
         try:
@@ -369,6 +377,7 @@ def _log_usage(chart):
                     client_ip = ""
             access_kst = datetime.now(ZoneInfo("Asia/Seoul"))
             payload = {
+                "secret": log_secret,
                 "access_time_kst": access_kst.strftime("%Y-%m-%d %H:%M:%S"),
                 "gender": "남성" if chart.is_male else "여성",
                 "birth_year": chart.birth_local.year,
