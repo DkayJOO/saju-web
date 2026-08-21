@@ -49,16 +49,63 @@ from saju_app import (
     IP_LOOKUP_TIMEOUT_SEC,
 )
 
-# 등급은 "좋고 나쁨"이 아니라 그 시기에 들어오는 변화·에너지의 크기를 뜻합니다.
-# 특히 "어려움"/"매우 어려움"은 불운이 아니라 변수가 많아 대비가 필요하다는
-# 의미라, 사용자가 오해하지 않도록 등급마다 짧은 설명을 붙여둡니다.
-GRADE_REFRAME = {
-    "매우 좋음": "기운이 순조롭게 흐르는 시기",
-    "좋음": "기운이 안정적으로 도와주는 시기",
-    "보통": "큰 기복 없이 흘러가는 시기",
-    "어려움": "불운을 뜻하지 않으며, 변화·사건이 많아 대비가 필요",
-    "매우 어려움": "불운을 뜻하지 않으며, 변화의 폭이 커서 노력하고 단련하는 시기",
+# 등급 이름 순화표 — "좋고 나쁨"이 아니라 그 시기에 필요한 태도를 알려주는
+# 이름으로 바꿉니다. 표준 명리 용어(구 라벨)는 괄호로 병기해서, 다른 자료나
+# 사람과 이야기할 때 소통에 문제가 없도록 합니다.
+GRADE_FRIENDLY = {
+    "매우 좋음": {
+        "label": "순항기",
+        "desc": "흐름이 나를 밀어주는 시기",
+        "tip": "기회가 왔을 때 과감하게 나아가 보세요.",
+    },
+    "좋음": {
+        "label": "순조로운 시기",
+        "desc": "무리 없이 나아가는 시기",
+        "tip": "지금의 흐름을 믿고 계획을 실행해보세요.",
+    },
+    "보통": {
+        "label": "평이한 시기",
+        "desc": "특별한 순풍도 역풍도 없는 시기",
+        "tip": "루틴을 지키며 다음 기회를 준비하기 좋은 때입니다.",
+    },
+    "어려움": {
+        "label": "단련기",
+        "desc": "노력이 평소보다 더 필요한 시기",
+        "tip": "무리한 확장보다 기초를 다지는 데 집중해보세요.",
+    },
+    "매우 어려움": {
+        "label": "심화 단련기",
+        "desc": "마찰이 크지만, 그만큼 다져지는 시기",
+        "tip": "큰 결정은 신중히, 대신 내공을 쌓는 시간으로 삼아보세요.",
+    },
 }
+
+
+def friendly_grade_label(raw_grade):
+    """'매우 어려움' → '심화 단련기 (구: 매우 어려움)'. 화면 표시 전용."""
+    info = GRADE_FRIENDLY.get(raw_grade)
+    if not info:
+        return raw_grade
+    return f"{info['label']} (구: {raw_grade})"
+
+
+def grade_caption(raw_grade):
+    info = GRADE_FRIENDLY.get(raw_grade)
+    if not info:
+        return ""
+    return f"{info['desc']} · {info['tip']}"
+
+
+GRADE_LEGEND_TEXT = (
+    "○ 등급 이름 안내\n"
+    "  이 리포트의 '등급'은 좋고 나쁨을 매기는 게 아니라, 그 시기에 필요한\n"
+    "  태도를 알려주는 이름입니다. 전통 명리 용어(구)도 함께 적어둡니다.\n"
+    + "\n".join(
+        f"  · {info['label']} (구: {raw}) — {info['desc']}. {info['tip']}"
+        for raw, info in GRADE_FRIENDLY.items()
+    )
+    + "\n"
+)
 
 # ──────────────────────────────────────────────────────────────
 # 기본 설정
@@ -255,7 +302,7 @@ DEFAULT_CITY_IDX = CITIES.index("서울") if "서울" in CITIES else 0
 
 CUR_YEAR = date.today().year
 YEARS = list(range(CUR_YEAR, 1899, -1))          # 최근 연도부터 역순
-DEFAULT_YEAR_IDX = YEARS.index(1978) if 1978 in YEARS else 0
+DEFAULT_YEAR_IDX = YEARS.index(1990) if 1990 in YEARS else 0
 
 st.markdown(
     "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일 (양력)</p>",
@@ -361,7 +408,10 @@ def _log_usage(chart):
     """
     if not LOG_WEBHOOK_URL:
         return
-    log_secret = st.secrets.get("LOG_SECRET", "")
+    try:
+        log_secret = st.secrets.get("LOG_SECRET", "")
+    except Exception:
+        log_secret = ""  # secrets.toml이 아예 없는 로컬 환경 등 — 조용히 로그 생략
     if not log_secret:
         return  # 비밀 토큰이 설정 안 돼 있으면 로그를 남기지 않습니다.
 
@@ -505,6 +555,11 @@ def render_reasons_html(reasons, limit=8):
     return f"<ul class='reason-list'>{items}</ul>"
 
 
+def short_grade_label(raw_grade):
+    info = GRADE_FRIENDLY.get(raw_grade)
+    return info["label"] if info else raw_grade
+
+
 def render_seun_table_html(rows, current_year):
     head = "<tr><th>연도</th><th>세운</th><th>대운</th><th>등급</th><th>%</th></tr>"
     body = ""
@@ -515,7 +570,7 @@ def render_seun_table_html(rows, current_year):
             f"<tr class='{cls}'><td class='{cls}'>{r['year']}</td>"
             f"<td class='{cls}'>{r['pillar'].hanja}</td>"
             f"<td class='{cls}'>{daeun_txt}</td>"
-            f"<td class='{cls}'>{r['grade']}</td>"
+            f"<td class='{cls}'>{short_grade_label(r['grade'])}</td>"
             f"<td class='{cls}'>{r['percent']}</td></tr>"
         )
     return f"<table class='seun-table'>{head}{body}</table>"
@@ -591,7 +646,7 @@ def render_daeun_table_html(scores, current_age):
         body += (
             f"<tr><td class='{cls}'>{age_start}~{age_start + 9}세</td>"
             f"<td class='{cls}'>{s['pillar'].hanja}</td>"
-            f"<td class='{cls}'>{s['grade']} {s['stars']}</td>"
+            f"<td class='{cls}'>{friendly_grade_label(s['grade'])} {s['stars']}</td>"
             f"<td class='{cls}'>{s['percent']}%</td></tr>"
         )
     return f"<table class='seun-table'>{head}{body}</table>"
@@ -599,18 +654,16 @@ def render_daeun_table_html(scores, current_age):
 
 def render_daeun_section(chart, a2, scores2):
     st.caption(
-        "등급은 '좋고 나쁨'이 아니라 그 시기에 들어오는 변화·에너지의 크기를 "
-        "뜻합니다. '어려움'류 등급도 불운이 아니라 변수가 많아 대비가 필요하다는 "
-        "의미로 봐주세요."
+        "등급 이름은 좋고 나쁨이 아니라 그 시기에 필요한 태도를 알려줍니다. "
+        "전통 명리 용어(구)도 괄호로 함께 적어뒀어요."
     )
     today_age = date.today().year - chart.birth_local.year + 1
     for s in scores2:
         age_start = s["age"]
         is_current = age_start <= today_age < age_start + 10
-        reframe = GRADE_REFRAME.get(s["grade"], "")
         label = (
             f"{'▶ ' if is_current else ''}{age_start}~{age_start + 9}세 · "
-            f"{s['pillar'].hanja} · {s['grade']} {s['stars']}"
+            f"{s['pillar'].hanja} · {friendly_grade_label(s['grade'])} {s['stars']}"
         )
         with st.expander(label, expanded=False):
             st.markdown(
@@ -621,7 +674,7 @@ def render_daeun_section(chart, a2, scores2):
                 "</div>",
                 unsafe_allow_html=True,
             )
-            st.caption(reframe)
+            st.caption(grade_caption(s["grade"]))
             st.markdown(f"**흐름 테마**: {_theme(a2, s['pillar'])}")
             if s["notes"]:
                 st.markdown(render_reasons_html(s["notes"], limit=10), unsafe_allow_html=True)
@@ -641,6 +694,34 @@ def render_daeun_section(chart, a2, scores2):
                     unsafe_allow_html=True,
                 )
 
+
+
+def augment_grades_in_json(chart, a2):
+    """export_dict() 결과를 그대로 두되, grade가 있는 자리마다 grade_friendly·
+    grade_advice 필드를 안전하게 덧붙입니다. 원래 grade 값은 그대로 남겨서
+    AI 챗봇 등 다른 프로그램이 참조할 표준 용어를 보존합니다."""
+    data = export_dict(chart, a2=a2)
+
+    def _walk(node):
+        if isinstance(node, dict):
+            for key in ("grade", "grade_absolute"):
+                val = node.get(key)
+                if val in GRADE_FRIENDLY:
+                    info = GRADE_FRIENDLY[val]
+                    node[key + "_friendly"] = info["label"]
+                    node[key + "_advice"] = f"{info['desc']}. {info['tip']}"
+            for v in node.values():
+                _walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                _walk(v)
+
+    _walk(data)
+    data["grade_legend"] = {
+        raw: {"friendly": info["label"], "desc": info["desc"], "tip": info["tip"]}
+        for raw, info in GRADE_FRIENDLY.items()
+    }
+    return json.dumps(data, ensure_ascii=False, indent=1, default=str)
 
 
 def make_pdf_bytes(title, text):
@@ -710,7 +791,7 @@ if "chart" in st.session_state:
     with st.expander("V2 상세 리포트 펼쳐보기 (지장간·통근·계절·종격 반영)", expanded=False):
         render_v2_detail(chart, a2, scores2)
 
-    st.markdown("#### 10년 주기 운세")
+    st.markdown("#### 대운 (10년 주기)")
     render_daeun_section(chart, a2, scores2)
 
     with st.expander("V1 간편 결과 함께 보기 (더 단순한 예전 방식)"):
@@ -719,8 +800,8 @@ if "chart" in st.session_state:
 
     # ── 내보내기 ────────────────────────────────────────────
     st.markdown("#### 결과 내보내기")
-    json_str = export_json(chart, a2=a2)
-    txt_str = export_text(chart, a2=a2, today=date.today())
+    json_str = augment_grades_in_json(chart, a2)
+    txt_str = GRADE_LEGEND_TEXT + "\n" + export_text(chart, a2=a2, today=date.today())
     pdf_bytes = make_pdf_bytes(f"사주풀이 결과 — {chart.birth_local:%Y-%m-%d %H:%M}", txt_str)
 
     fname_base = f"saju_{chart.birth_local:%Y%m%d_%H%M}"
