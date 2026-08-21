@@ -710,7 +710,7 @@ if "chart" in st.session_state:
     with st.expander("V2 상세 리포트 펼쳐보기 (지장간·통근·계절·종격 반영)", expanded=False):
         render_v2_detail(chart, a2, scores2)
 
-    st.markdown("#### 대운 (10년 주기)")
+    st.markdown("#### 10년 주기 운세")
     render_daeun_section(chart, a2, scores2)
 
     with st.expander("V1 간편 결과 함께 보기 (더 단순한 예전 방식)"):
