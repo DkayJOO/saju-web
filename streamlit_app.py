@@ -255,83 +255,99 @@ DEFAULT_CITY_IDX = CITIES.index("서울") if "서울" in CITIES else 0
 
 CUR_YEAR = date.today().year
 YEARS = list(range(CUR_YEAR, 1899, -1))          # 최근 연도부터 역순
-DEFAULT_YEAR_IDX = YEARS.index(1980) if 1980 in YEARS else 0
+DEFAULT_YEAR_IDX = YEARS.index(1990) if 1990 in YEARS else 0
 
-with st.form("birth_form"):
+st.markdown(
+    "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일 (양력)</p>",
+    unsafe_allow_html=True,
+)
+dc1, dc2, dc3 = st.columns(3)
+birth_year = dc1.selectbox(
+    "년", YEARS, index=DEFAULT_YEAR_IDX, format_func=lambda y: f"{y}년",
+    label_visibility="collapsed",
+)
+birth_month = dc2.selectbox(
+    "월", list(range(1, 13)), index=0, format_func=lambda m: f"{m}월",
+    label_visibility="collapsed",
+)
+birth_day = dc3.selectbox(
+    "일", list(range(1, 32)), index=0, format_func=lambda d: f"{d}일",
+    label_visibility="collapsed",
+)
+
+st.markdown(
+    "<p style='font-size:13px; color:var(--ink-soft); margin:10px 0 6px;'>"
+    "태어난 시각 (모를 경우 12시로 선택해주세요)</p>",
+    unsafe_allow_html=True,
+)
+tc1, tc2 = st.columns(2)
+birth_hour = tc1.selectbox(
+    "시", list(range(0, 24)), index=12, format_func=lambda h: f"{h}시",
+    label_visibility="collapsed",
+)
+birth_minute = tc2.selectbox(
+    "분", list(range(0, 60)), index=0, format_func=lambda m: f"{m}분",
+    label_visibility="collapsed",
+)
+
+gc1, gc2 = st.columns(2)
+with gc1:
+    gender_label = st.radio("성별", ["남", "여"], horizontal=True)
+with gc2:
+    place = st.selectbox("태어난 지역", CITIES, index=DEFAULT_CITY_IDX)
+
+with st.expander("시간 설정 — 결과가 다르게 나온다면 여기를 확인하세요"):
     st.markdown(
-        "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일 (양력)</p>",
-        unsafe_allow_html=True,
-    )
-    dc1, dc2, dc3 = st.columns(3)
-    birth_year = dc1.selectbox(
-        "년", YEARS, index=DEFAULT_YEAR_IDX, format_func=lambda y: f"{y}년",
-        label_visibility="collapsed",
-    )
-    birth_month = dc2.selectbox(
-        "월", list(range(1, 13)), index=0, format_func=lambda m: f"{m}월",
-        label_visibility="collapsed",
-    )
-    birth_day = dc3.selectbox(
-        "일", list(range(1, 32)), index=0, format_func=lambda d: f"{d}일",
-        label_visibility="collapsed",
+        "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 10px;'>"
+        "밤 11시~새벽 1시 사이에 태어나셨거나, 정확한 결과를 원하시면 "
+        "아래 설정을 확인해주세요. 잘 모르시면 기본값 그대로 두셔도 됩니다."
+        "</p>", unsafe_allow_html=True,
     )
 
+    jasi_school = st.radio(
+        "자시(밤 11시~새벽 1시) 기준", list(JASI_SCHOOLS), index=0,
+        horizontal=True,
+    )
     st.markdown(
-        "<p style='font-size:13px; color:var(--ink-soft); margin:10px 0 6px;'>태어난 시각 (모를경우 12시 선택) </p>",
-        unsafe_allow_html=True,
-    )
-    tc1, tc2 = st.columns(2)
-    birth_hour = tc1.selectbox(
-        "시", list(range(0, 24)), index=12, format_func=lambda h: f"{h}시",
-        label_visibility="collapsed",
-    )
-    birth_minute = tc2.selectbox(
-        "분", list(range(0, 60)), index=0, format_func=lambda m: f"{m}분",
-        label_visibility="collapsed",
+        "<div class='timeline-bar'>"
+        "<div style='background:#F5C4B3; color:#4A1B0C;'>밤 11시~12시 오늘</div>"
+        "<div style='background:#FAC775; color:#412402;'>12시~새벽1시 내일</div>"
+        "</div>"
+        "<p style='font-size:12px; color:var(--ink-soft); margin:0 0 12px;'>"
+        "<b>야자시</b>(추천): 자정이 되는 순간 내일로 넘어가요. &nbsp;·&nbsp; "
+        "<b>정자시</b>: 밤 11시가 되는 순간부터 바로 내일로 봐요."
+        "</p>", unsafe_allow_html=True,
     )
 
-    gc1, gc2 = st.columns(2)
-    with gc1:
-        gender_label = st.radio("성별", ["남", "여"], horizontal=True)
-    with gc2:
-        place = st.selectbox("태어난 지역", CITIES, index=DEFAULT_CITY_IDX)
+    apply_longitude = st.checkbox(
+        "진태양시 보정 사용 (추천)", value=True,
+        help="표준시계 대신, 태어난 지역의 실제 해 위치 기준 시각으로 계산합니다. "
+             "한국은 표준시가 동경 135도 기준이라 서울 등 대부분 지역은 실제 "
+             "해보다 시계가 30분 안팎 빠릅니다.",
+    )
+    apply_eot = st.checkbox(
+        "균시차 보정 사용", value=False,
+        help="지구 공전 궤도가 타원이라 생기는 최대 ±16분의 추가 오차까지 "
+             "보정합니다. 명리 실무에서는 대개 생략하는 값이라 기본은 꺼둡니다.",
+    )
 
-    with st.expander("시간 설정 — 결과가 다르게 나온다면 여기를 확인하세요"):
-        st.markdown(
-            "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 10px;'>"
-            "밤 11시~새벽 1시 사이에 태어나셨거나, 정확한 결과를 원하시면 "
-            "아래 설정을 확인해주세요. 잘 모르시면 기본값 그대로 두셔도 됩니다."
-            "</p>", unsafe_allow_html=True,
-        )
+# 지금 입력값 전체를 하나의 지문(fingerprint)으로 묶어서, 마지막으로 계산했던
+# 입력과 완전히 같으면 버튼을 눌러도 재계산·재로그를 하지 않도록 막습니다.
+# 입력을 하나라도 바꾸면 지문이 달라져 버튼이 다시 눌립니다.
+current_input_hash = hash((
+    birth_year, birth_month, birth_day, birth_hour, birth_minute,
+    gender_label, place, jasi_school, apply_longitude, apply_eot,
+))
+already_computed = (
+    "chart" in st.session_state
+    and st.session_state.get("last_input_hash") == current_input_hash
+)
 
-        jasi_school = st.radio(
-            "자시(밤 11시~새벽 1시) 기준", list(JASI_SCHOOLS), index=0,
-            horizontal=True,
-        )
-        st.markdown(
-            "<div class='timeline-bar'>"
-            "<div style='background:#F5C4B3; color:#4A1B0C;'>밤 11시~12시 오늘</div>"
-            "<div style='background:#FAC775; color:#412402;'>12시~새벽1시 내일</div>"
-            "</div>"
-            "<p style='font-size:12px; color:var(--ink-soft); margin:0 0 12px;'>"
-            "<b>야자시</b>(추천): 자정이 되는 순간 내일로 넘어가요. &nbsp;·&nbsp; "
-            "<b>정자시</b>: 밤 11시가 되는 순간부터 바로 내일로 봐요."
-            "</p>", unsafe_allow_html=True,
-        )
-
-        apply_longitude = st.checkbox(
-            "진태양시 보정 사용 (추천)", value=True,
-            help="표준시계 대신, 태어난 지역의 실제 해 위치 기준 시각으로 계산합니다. "
-                 "한국은 표준시가 동경 135도 기준이라 서울 등 대부분 지역은 실제 "
-                 "해보다 시계가 30분 안팎 빠릅니다.",
-        )
-        apply_eot = st.checkbox(
-            "균시차 보정 사용", value=False,
-            help="지구 공전 궤도가 타원이라 생기는 최대 ±16분의 추가 오차까지 "
-                 "보정합니다. 명리 실무에서는 대개 생략하는 값이라 기본은 꺼둡니다.",
-        )
-
-    submitted = st.form_submit_button("사주 풀이 보기", use_container_width=True)
+submitted = st.button(
+    "사주 풀이 보기", use_container_width=True, disabled=already_computed,
+)
+if already_computed:
+    st.caption("✓ 이 입력값으로 이미 계산했어요. 값을 바꾸면 다시 눌러보실 수 있어요.")
 
 def _log_usage(chart):
     """[접속일시(KST), 성별, 연도, 월, 일, 시, 장소, IP] 한 줄을 구글시트 'log'
@@ -387,10 +403,13 @@ if submitted:
             apply_eot=apply_eot,
         )
         st.session_state["chart"] = chart
+        st.session_state["last_input_hash"] = current_input_hash
         _log_usage(chart)
+        st.rerun()
     except Exception as e:
         st.error(f"계산 중 문제가 발생했습니다: {e}")
         st.session_state.pop("chart", None)
+        st.session_state.pop("last_input_hash", None)
 
 # ──────────────────────────────────────────────────────────────
 # 결과 표시 — V2 상세를 텍스트 대신 정렬이 깨지지 않는 HTML로 구성
@@ -549,7 +568,7 @@ def render_v1_detail(chart, a1, scores1):
     st.markdown("**판정 근거 (V1)**", unsafe_allow_html=True)
     st.markdown(render_reasons_html(a1.reasons), unsafe_allow_html=True)
 
-    st.markdown("**간소화 분석에 따른 대운 (10년 주기) 요약 (V1)**", unsafe_allow_html=True)
+    st.markdown("**V1 분석에 따른 대운 (10년 주기) 요약**", unsafe_allow_html=True)
     today_age = date.today().year - chart.birth_local.year + 1
     st.markdown(render_daeun_table_html(scores1, today_age), unsafe_allow_html=True)
 
