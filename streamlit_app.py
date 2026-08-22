@@ -282,18 +282,6 @@ h1, h2, h3 { color: var(--ink) !important; }
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-KAKAO_ESCAPE_JS = """
-<script>
-(function () {
-    var ua = navigator.userAgent.toLowerCase();
-    if (ua.indexOf("kakaotalk") === -1) { return; }
-    var target = window.location.href;
-    window.location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(target);
-})();
-</script>
-"""
-st.markdown(KAKAO_ESCAPE_JS, unsafe_allow_html=True)
-
 st.markdown(
     "<div class='app-header'><span class='title'>사주풀이</span></div>"
     "<div class='app-sub'>생년월일시로 원국·강약·용신·대운을 풀이합니다"
