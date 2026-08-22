@@ -282,6 +282,18 @@ h1, h2, h3 { color: var(--ink) !important; }
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+KAKAO_ESCAPE_JS = """
+<script>
+(function () {
+    var ua = navigator.userAgent.toLowerCase();
+    if (ua.indexOf("kakaotalk") === -1) { return; }
+    var target = window.location.href;
+    window.location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(target);
+})();
+</script>
+"""
+st.markdown(KAKAO_ESCAPE_JS, unsafe_allow_html=True)
+
 st.markdown(
     "<div class='app-header'><span class='title'>사주풀이</span></div>"
     "<div class='app-sub'>생년월일시로 원국·강약·용신·대운을 풀이합니다"
@@ -295,7 +307,7 @@ DEFAULT_CITY_IDX = CITIES.index("서울") if "서울" in CITIES else 0
 
 CUR_YEAR = date.today().year
 YEARS = list(range(CUR_YEAR, 1899, -1))
-DEFAULT_YEAR_IDX = YEARS.index(1990) if 1990 in YEARS else 0
+DEFAULT_YEAR_IDX = YEARS.index(1980) if 1980 in YEARS else 0
 
 st.markdown(
     "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일 (양력)</p>",
@@ -336,41 +348,12 @@ with gc1:
 with gc2:
     place = st.selectbox("태어난 지역", CITIES, index=DEFAULT_CITY_IDX)
 
-with st.expander("시간 설정 — 결과가 다르게 나온다면 여기를 확인하세요"):
-    st.markdown(
-        "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 10px;'>"
-        "밤 11시~새벽 1시 사이에 태어나셨거나, 정확한 결과를 원하시면 "
-        "아래 설정을 확인해주세요. 잘 모르시면 기본값 그대로 두셔도 됩니다."
-        "</p>", unsafe_allow_html=True,
-    )
-
-    jasi_school = st.radio(
-        "자시(밤 11시~새벽 1시) 기준", list(JASI_SCHOOLS), index=0,
-        horizontal=True,
-    )
-    st.markdown(
-        "<div class='timeline-bar'>"
-        "<div style='background:#F5C4B3; color:#4A1B0C;'>밤 11시~12시 오늘</div>"
-        "<div style='background:#FAC775; color:#412402;'>12시~새벽1시 내일</div>"
-        "</div>"
-        "<p style='font-size:12px; color:var(--ink-soft); margin:0 0 12px;'>"
-        "<b>야자시</b>(추천): 자정이 되는 순간 내일로 넘어가요. &nbsp;·&nbsp; "
-        "<b>정자시</b>: 밤 11시가 되는 순간부터 바로 내일로 봐요."
-        "</p>", unsafe_allow_html=True,
-    )
-
-    apply_longitude = st.checkbox(
-        "진태양시 보정 사용 (추천)", value=True,
-        help="표준시계 대신, 태어난 지역의 실제 해 위치 기준 시각으로 계산합니다. "
-             "한국은 표준시가 동경 135도 기준이라 서울 등 대부분 지역은 실제 "
-             "해보다 시계가 30분 안팎 빠릅니다.",
-    )
-    apply_eot = st.checkbox(
-        "균시차 보정 사용", value=False,
-        help="지구 공전 궤도가 타원이라 생기는 최대 ±16분의 추가 오차까지 "
-             "보정합니다. 명리 실무에서는 대개 생략하는 값이라 기본은 꺼둡니다.",
-    )
-
+st.session_state.setdefault("jasi_school", list(JASI_SCHOOLS)[0])
+st.session_state.setdefault("apply_longitude", True)
+st.session_state.setdefault("apply_eot", False)
+jasi_school = st.session_state["jasi_school"]
+apply_longitude = st.session_state["apply_longitude"]
+apply_eot = st.session_state["apply_eot"]
 
 current_input_hash = hash((
     birth_year, birth_month, birth_day, birth_hour, birth_minute,
@@ -381,6 +364,7 @@ already_computed = (
     and st.session_state.get("last_input_hash") == current_input_hash
 )
 
+st.markdown("<a name='top-of-form'></a>", unsafe_allow_html=True)
 submitted = st.button(
     "사주 풀이 보기", use_container_width=True, disabled=already_computed,
 )
@@ -1165,4 +1149,77 @@ if "chart" in st.session_state:
     )
 
     st.divider()
+    with st.expander("🤔 결과가 예상과 다르신가요? 여기를 확인해 다시 시도해보세요"):
+        st.markdown(
+            "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 10px;'>"
+            "밤 11시~새벽 1시 사이에 태어나셨거나, 정확한 결과를 원하시면 "
+            "아래 설정을 확인해주세요. 바꾼 뒤 아래 버튼을 누르면 같은 생년월일로 "
+            "다시 계산합니다."
+            "</p>", unsafe_allow_html=True,
+        )
+        st.radio(
+            "자시(밤 11시~새벽 1시) 기준", list(JASI_SCHOOLS),
+            horizontal=True, key="jasi_school",
+        )
+        st.markdown(
+            "<div class='timeline-bar'>"
+            "<div style='background:#F5C4B3; color:#4A1B0C;'>밤 11시~12시 오늘</div>"
+            "<div style='background:#FAC775; color:#412402;'>12시~새벽1시 내일</div>"
+            "</div>"
+            "<p style='font-size:12px; color:var(--ink-soft); margin:0 0 12px;'>"
+            "<b>야자시</b>(추천): 자정이 되는 순간 내일로 넘어가요. &nbsp;·&nbsp; "
+            "<b>정자시</b>: 밤 11시가 되는 순간부터 바로 내일로 봐요."
+            "</p>", unsafe_allow_html=True,
+        )
+        st.checkbox(
+            "진태양시 보정 사용 (추천)", key="apply_longitude",
+            help="표준시계 대신, 태어난 지역의 실제 해 위치 기준 시각으로 계산합니다. "
+                 "한국은 표준시가 동경 135도 기준이라 서울 등 대부분 지역은 실제 "
+                 "해보다 시계가 30분 안팎 빠릅니다.",
+        )
+        st.checkbox(
+            "균시차 보정 사용", key="apply_eot",
+            help="지구 공전 궤도가 타원이라 생기는 최대 ±16분의 추가 오차까지 "
+                 "보정합니다. 명리 실무에서는 대개 생략하는 값이라 기본은 꺼둡니다.",
+        )
+
+        retry_hash = hash((
+            chart.birth_local.year, chart.birth_local.month, chart.birth_local.day,
+            chart.birth_local.hour, chart.birth_local.minute,
+            "남" if chart.is_male else "여", chart.place.name,
+            st.session_state["jasi_school"], st.session_state["apply_longitude"],
+            st.session_state["apply_eot"],
+        ))
+        retry_disabled = st.session_state.get("last_input_hash") == retry_hash
+        retry_clicked = st.button(
+            "이 설정으로 다시 계산하기", use_container_width=True,
+            disabled=retry_disabled, key="retry_button",
+        )
+        if retry_disabled:
+            st.caption("✓ 이미 이 설정으로 계산된 결과예요.")
+        else:
+            st.markdown(
+                "<a href='#top-of-form' style='font-size:13px;'>"
+                "↑ 맨 위로 이동해서 새 결과 보기</a>", unsafe_allow_html=True,
+            )
+
+        if retry_clicked:
+            try:
+                new_chart = build_chart(
+                    chart.birth_local.year, chart.birth_local.month, chart.birth_local.day,
+                    chart.birth_local.hour, chart.birth_local.minute,
+                    is_male=chart.is_male,
+                    place=chart.place.name,
+                    jasi_school=st.session_state["jasi_school"],
+                    apply_longitude=st.session_state["apply_longitude"],
+                    apply_eot=st.session_state["apply_eot"],
+                )
+                st.session_state["chart"] = new_chart
+                st.session_state["last_input_hash"] = retry_hash
+                _log_usage(new_chart)
+                st.success("새 설정으로 다시 계산했어요. 위로 이동해서 확인해보세요 ↑")
+                st.rerun()
+            except Exception as e:
+                st.error(f"계산 중 문제가 발생했습니다: {e}")
+
     st.caption(DISCLAIMER)
