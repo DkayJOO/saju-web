@@ -1,24 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-saju_app.py — 사주 분석기 (계산 엔진 + GUI, 단일 파일 통합본)
 
-이 파일 하나만 있으면 됩니다. 실행:
-
-    python3 saju_app.py
-
-필요 조건: Python 3.9 이상 (tkinter 표준 포함, 추가 패키지 설치 불필요)
-
-────────────────────────────────────────────────────────────────
-이 파일은 원래 세 개로 나뉘어 있던
-  · saju_all.py  (사주 계산 엔진 — 원국·대운 산출, v1 억부 판정)
-  · saju_plus.py (강화 분석 엔진 — 지장간·통근·계절·종격 반영 v2 판정)
-  · saju_gui.py  (tkinter GUI)
-를 하나의 파일로 합친 것입니다. 계산 로직 자체는 전혀 바뀌지 않았습니다.
-
-※ 이 결과는 명리학이라는 전통 해석 체계를 코드로 옮긴 것이며,
-   과학적으로 검증된 예측이 아닙니다. 자기 성찰의 참고 자료로만 쓰세요.
-"""
 
 import os
 import sys
@@ -73,40 +55,9 @@ except ImportError:
 
 __version__ = "1.0.0"
 
-# ── 사용 로그 수집 (선택) ──────────────────────────────────────
-# Google Apps Script 를 웹앱으로 배포한 뒤 그 URL(…/exec)을 여기 넣으면
-# '사주 계산하기'를 누를 때마다 [접속일시(KST), 성별, 연도, 월, 일, 시,
-# 장소] 한 줄이 구글시트 'log' 탭에 기록됩니다. 빈 문자열이면 로그를
-# 보내지 않습니다.
-#
-# 설정 방법 (한 번만 하면 됩니다):
-#   1) 로그를 저장할 구글시트를 엽니다.
-#   2) 메뉴 [확장 프로그램] → [Apps Script] 를 클릭합니다.
-#   3) 편집기에 기본으로 있던 코드를 지우고, 이 파일과 함께 받은
-#      google_apps_script.gs 의 내용을 그대로 붙여넣습니다.
-#      (SPREADSHEET_ID 상수를 이 구글시트의 ID로 바꿔주세요.
-#       시트 URL 의 /d/ 와 /edit 사이 문자열입니다.)
-#   4) 오른쪽 위 [배포] → [새 배포] → 유형에서 톱니바퀴를 눌러
-#      '웹 앱'을 선택합니다.
-#      - 실행할 사용자: 나
-#      - 액세스 권한이 있는 사용자: 모든 사용자
-#      [배포]를 누르면 처음엔 권한 승인 화면이 뜹니다. 본인 계정으로
-#      승인하면 됩니다("안전하지 않음" 경고가 떠도 본인이 만든
-#      스크립트이므로 계속 진행하면 됩니다).
-#   5) 배포가 끝나면 나오는 웹 앱 URL("…/exec"로 끝남)을 복사해서
-#      아래 LOG_WEBHOOK_URL 에 붙여넣습니다.
-#
-# 스크립트를 수정해서 다시 배포할 때는 매번 '새 배포'가 아니라
-# [배포] → [배포 관리] → 연필 아이콘 → '새 버전'으로 업데이트해야
-# 같은 URL이 유지됩니다.
 LOG_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz1TdB6dXgSWEzxRb7BO0E1OmtQRJB4zA18YSGvcoCRNQOY1hMyF452jFj61Fa5opG_/exec"   # 예: "https://script.google.com/macros/s/AKfycbzYLaVXN4NjliKZMoY-2XJJBAeGyBCBVIatRFZtE0MKaoYMHVIKfR05Eb1Jmf6i1xEi/exec"
 LOG_TIMEOUT_SEC = 4
 
-# 로그에 접속 IP 를 함께 남기고 싶을 때 True 로 바꾸세요.
-# Google Apps Script 는 요청을 보낸 쪽의 IP 를 알려주지 않기 때문에,
-# 이 프로그램이 직접 외부 IP 조회 서비스(ipify)에 물어본 뒤 그 값을
-# 로그 payload 에 실어 보내는 방식입니다. 조회에 실패하면(오프라인 등)
-# IP 칸은 빈 문자열로 남고, 계산 자체는 평소처럼 진행됩니다.
 LOG_INCLUDE_IP = True
 IP_LOOKUP_URL = "https://api.ipify.org?format=json"
 IP_LOOKUP_TIMEOUT_SEC = 3
