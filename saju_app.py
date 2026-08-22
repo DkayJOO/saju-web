@@ -1,6 +1,22 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+"""
+saju_app.py — 사주 분석기 (계산 엔진 + GUI, 단일 파일 통합본)
 
+이 파일 하나만 있으면 됩니다. 실행:
+
+    python3 saju_app.py
+
+필요 조건: Python 3.9 이상 (tkinter 표준 포함, 추가 패키지 설치 불필요)
+
+────────────────────────────────────────────────────────────────
+이 파일은 원래 세 개로 나뉘어 있던
+  · saju_all.py  (사주 계산 엔진 — 원국·대운 산출, v1 억부 판정)
+  · saju_plus.py (강화 분석 엔진 — 지장간·통근·계절·종격 반영 v2 판정)
+  · saju_gui.py  (tkinter GUI)
+를 하나의 파일로 합친 것입니다. 계산 로직 자체는 전혀 바뀌지 않았습니다.
+
+※ 이 결과는 명리학이라는 전통 해석 체계를 코드로 옮긴 것이며,
+   과학적으로 검증된 예측이 아닙니다. 자기 성찰의 참고 자료로만 쓰세요.
+"""
 
 import os
 import sys
@@ -17,15 +33,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, date, timezone as _tz
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# tkinter 는 GUI 실행에만 필요합니다. 회귀 테스트/CI 는 화면 없는 환경에서
-# 계산 엔진만 임포트해야 하므로, 없을 때는 더미로 대체하고 main() 진입 시점에
-# 안내를 띄웁니다. (아래 GUI 클래스들이 tk.Frame 등을 상속하기 때문에
-#  단순히 None 을 넣으면 클래스 정의 자체가 실패합니다.)
+
 try:
     import tkinter as tk
     from tkinter import ttk, messagebox, filedialog, font as tkfont
     _TK_AVAILABLE = True
-except ImportError:                                   # pragma: no cover
+except ImportError:
     _TK_AVAILABLE = False
 
     class _TkStub:
@@ -45,8 +58,7 @@ except ImportError:                                   # pragma: no cover
 
     tk = ttk = messagebox = filedialog = tkfont = _TkModuleStub()
 
-# 이미지 캡쳐 기능(스크린샷 내보내기)에 사용. 없어도 앱 자체는 정상 동작하며,
-# 캡쳐 버튼을 누를 때만 설치 안내를 보여줍니다.
+
 try:
     from PIL import Image, ImageGrab
     _PIL_AVAILABLE = True
@@ -55,16 +67,16 @@ except ImportError:
 
 __version__ = "1.0.0"
 
-LOG_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz1TdB6dXgSWEzxRb7BO0E1OmtQRJB4zA18YSGvcoCRNQOY1hMyF452jFj61Fa5opG_/exec"   # 예: "https://script.google.com/macros/s/AKfycbzYLaVXN4NjliKZMoY-2XJJBAeGyBCBVIatRFZtE0MKaoYMHVIKfR05Eb1Jmf6i1xEi/exec"
+
+LOG_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz1TdB6dXgSWEzxRb7BO0E1OmtQRJB4zA18YSGvcoCRNQOY1hMyF452jFj61Fa5opG_/exec"
 LOG_TIMEOUT_SEC = 4
+
 
 LOG_INCLUDE_IP = True
 IP_LOOKUP_URL = "https://api.ipify.org?format=json"
 IP_LOOKUP_TIMEOUT_SEC = 3
 
-# ══════════════════════════════════════════════════════════════════════
-# ── astro.py
-# ══════════════════════════════════════════════════════════════════════
+
 """천문 계산: 태양 황경, 절기, 율리우스일, 균시차.
 
 VSOP87 절단급수(Meeus, Astronomical Algorithms, Appendix III)를 사용합니다.
@@ -80,7 +92,7 @@ SOLAR_TERMS = ["입춘", "우수", "경칩", "춘분", "청명", "곡우",
                "입추", "처서", "백로", "추분", "한로", "상강",
                "입동", "소설", "대설", "동지", "소한", "대한"]
 
-# 12절(節) 인덱스 -> 해당 절이 시작시키는 월지 인덱스
+
 JEOL_TO_BRANCH = {0: 2, 2: 3, 4: 4, 6: 5, 8: 6, 10: 7,
                   12: 8, 14: 9, 16: 10, 18: 11, 20: 0, 22: 1}
 
@@ -160,7 +172,7 @@ def sun_longitude(jd_tt):
          + _ser(_R3, tau)*tau**3 + _ser(_R4, tau)*tau**4) / 1e8
 
     T = tau * 10
-    theta = math.degrees(L) + 180.0 - 0.09033 / 3600.0   # FK5 보정
+    theta = math.degrees(L) + 180.0 - 0.09033 / 3600.0
 
     om = math.radians(125.04452 - 1934.136261 * T)
     Ls = math.radians(280.4665 + 36000.7698 * T)
@@ -170,10 +182,6 @@ def sun_longitude(jd_tt):
     aberr = -20.4898 / R / 3600.0
     return (theta + dpsi + aberr) % 360
 
-
-# ═══════════════════════════════════════════════
-# 시간 변환
-# ═══════════════════════════════════════════════
 
 def julian_day(dt_utc):
     y, m = dt_utc.year, dt_utc.month
@@ -206,16 +214,6 @@ def jd_to_datetime(jd):
     return datetime(year, month, di) + timedelta(seconds=(day - di) * 86400)
 
 
-# 실측 ΔT (IERS/USNO 연평균, 초). Espenak & Meeus 의 2005~2050 다항식은
-# 2007년에 만들어진 '외삽'이라, 그 뒤 지구 자전이 예상보다 빨라지면서
-# 실제와 벌어지고 있습니다(2020년: 공식 71.60초 vs 실측 69.36초).
-# 살아 있는 한국인 대부분이 이 구간에 걸리므로 실측값을 우선합니다.
-#
-# ※ 이 표는 검증이 필요합니다. IERS Bulletin A/C 또는 USNO 발표값으로
-#    대조하고, 새 연도가 확정되면 끝에 덧붙이세요. 마지막 항목 이후는
-#    _DT_TAPER_YEARS 에 걸쳐 Espenak & Meeus 장기 모델로 부드럽게
-#    되돌아갑니다(미래 ΔT 는 원리적으로 예측 불가이므로, 현재의 평탄화가
-#    영구히 이어진다고 가정하지 않기 위한 절충입니다).
 _DT_OBSERVED = {
     1972: 42.23, 1973: 43.37, 1974: 44.49, 1975: 45.48, 1976: 46.46,
     1977: 47.52, 1978: 48.53, 1979: 49.59, 1980: 50.54, 1981: 51.38,
@@ -299,7 +297,7 @@ def delta_t(year):
     """
     y = float(year)
 
-    # ── 1972~2024: 실측값 선형보간
+
     if _DT_OBS_MIN <= y <= _DT_OBS_MAX:
         lo = int(math.floor(y))
         if lo == _DT_OBS_MAX:
@@ -307,7 +305,7 @@ def delta_t(year):
         f = y - lo
         return _DT_OBSERVED[lo] * (1 - f) + _DT_OBSERVED[lo + 1] * f
 
-    # ── 실측표 직전(1972년 미만): 경계에서 튀지 않도록 보정량을 되돌림
+
     if y < _DT_OBS_MIN:
         gap = _DT_OBS_MIN - y
         if gap >= _DT_TAPER_YEARS:
@@ -315,7 +313,7 @@ def delta_t(year):
         bias = _DT_OBSERVED[_DT_OBS_MIN] - _delta_t_polynomial(float(_DT_OBS_MIN))
         return _delta_t_polynomial(y) + bias * (1.0 - gap / _DT_TAPER_YEARS)
 
-    # ── 실측표 이후(2024년 초과): 현재 편차를 _DT_TAPER_YEARS 에 걸쳐 해소
+
     gap = y - _DT_OBS_MAX
     if gap >= _DT_TAPER_YEARS:
         return _delta_t_polynomial(y)
@@ -334,9 +332,8 @@ def find_solar_term(year, index):
     target = (315 + index * 15) % 360
     jd = julian_day(datetime(year, 2, 4) + timedelta(days=index * 15.2))
     for _ in range(60):
-        # ΔT 는 반복마다 현재 jd 의 '소수 연도'로 다시 구합니다. 예전처럼
-        # 인자 year 를 그대로 쓰면, 다음 해 1월로 넘어가는 소한·대한(index
-        # 22·23)에서 한 해 전 ΔT 를 쓰게 되고 연 경계마다 불연속이 생깁니다.
+
+
         fy = 2000.0 + (jd - 2451545.0) / 365.25
         diff = (sun_longitude(jd + delta_t(fy)/86400.0) - target + 180) % 360 - 180
         if abs(diff) < 1e-9:
@@ -357,9 +354,7 @@ def equation_of_time(jd_tt):
            - 0.5*y*y*math.sin(4*l0) - 1.25*e*e*math.sin(2*m))
     return math.degrees(eot) * 4
 
-# ══════════════════════════════════════════════════════════════════════
-# ── constants.py
-# ══════════════════════════════════════════════════════════════════════
+
 """천간·지지·오행 상수 및 관계 정의."""
 
 GAN = "갑을병정무기경신임계"
@@ -367,22 +362,22 @@ JI = "자축인묘진사오미신유술해"
 GAN_H = "甲乙丙丁戊己庚辛壬癸"
 JI_H = "子丑寅卯辰巳午未申酉戌亥"
 
-# 오행
+
 GAN_OHAENG = ["목", "목", "화", "화", "토", "토", "금", "금", "수", "수"]
 JI_OHAENG = ["수", "토", "목", "목", "토", "화", "화", "토", "금", "금", "토", "수"]
 OHAENG = ["목", "화", "토", "금", "수"]
 
-# 음양 (0=양, 1=음)
+
 GAN_YY = [i % 2 for i in range(10)]
 JI_YY = [i % 2 for i in range(12)]
 
-# 상생 / 상극
+
 SAENG = {"목": "화", "화": "토", "토": "금", "금": "수", "수": "목"}
 GEUK = {"목": "토", "토": "수", "수": "화", "화": "금", "금": "목"}
-SAENG_BY = {v: k for k, v in SAENG.items()}   # 나를 생하는 오행
-GEUK_BY = {v: k for k, v in GEUK.items()}     # 나를 극하는 오행
+SAENG_BY = {v: k for k, v in SAENG.items()}
+GEUK_BY = {v: k for k, v in GEUK.items()}
 
-# 십성 분류
+
 SIPSEONG_GROUP = {
     "비견": "비겁", "겁재": "비겁",
     "식신": "식상", "상관": "식상",
@@ -391,7 +386,7 @@ SIPSEONG_GROUP = {
     "편인": "인성", "정인": "인성",
 }
 
-# 지장간 (지지 -> [(천간 인덱스, 배분 일수), ...])
+
 JIJANGGAN = {
     0:  [(9, 10), (9, 20)],
     1:  [(9, 9), (7, 3), (5, 18)],
@@ -407,26 +402,25 @@ JIJANGGAN = {
     11: [(4, 7), (0, 7), (8, 16)],
 }
 
-# ── 지지 관계 ───────────────────────────────────
-# 육충 (인덱스 차이 6)
+
 def is_chung(a, b):
     return (a - b) % 12 == 6
 
-# 육합 (지지 두 개가 만나 특정 오행으로 화함)
+
 YUKHAP = {
     frozenset((0, 1)): "토", frozenset((2, 11)): "목",
     frozenset((3, 10)): "화", frozenset((4, 9)): "금",
     frozenset((5, 8)): "수", frozenset((6, 7)): "토",
 }
 
-# 삼합 (세 지지가 모이면 강한 국을 이룸)
+
 SAMHAP = {
-    frozenset((8, 0, 4)): "수",   # 신자진
-    frozenset((11, 3, 7)): "목",  # 해묘미
-    frozenset((2, 6, 10)): "화",  # 인오술
-    frozenset((5, 9, 1)): "금",   # 사유축
+    frozenset((8, 0, 4)): "수",
+    frozenset((11, 3, 7)): "목",
+    frozenset((2, 6, 10)): "화",
+    frozenset((5, 9, 1)): "금",
 }
-# 반합 (삼합 중 두 글자, 왕지 포함 시 성립)
+
 BANHAP = {}
 for _k, _v in SAMHAP.items():
     _m = sorted(_k)
@@ -435,28 +429,28 @@ for _k, _v in SAMHAP.items():
             if _a < _b:
                 BANHAP[frozenset((_a, _b))] = _v
 
-# 방합 (계절 방위)
+
 BANGHAP = {
     frozenset((2, 3, 4)): "목", frozenset((5, 6, 7)): "화",
     frozenset((8, 9, 10)): "금", frozenset((11, 0, 1)): "수",
 }
 
-# 천간합
+
 CHEONGAN_HAP = {
     frozenset((0, 5)): "토", frozenset((1, 6)): "금",
     frozenset((2, 7)): "수", frozenset((3, 8)): "목",
     frozenset((4, 9)): "화",
 }
 
-# 계절별 조후(調候) 판단용 — 월지 -> 계절
+
 JI_SEASON = ["겨울", "겨울", "봄", "봄", "봄", "여름", "여름", "여름",
              "가을", "가을", "가을", "겨울"]
 
-# 십이운성 (일간 기준 지지의 기운 세기)
+
 UNSEONG_NAMES = ["장생", "목욕", "관대", "건록", "제왕", "쇠",
                  "병", "사", "묘", "절", "태", "양"]
-UNSEONG_START = [11, 6, 2, 9, 2, 9, 5, 0, 8, 3]   # 각 천간의 장생 지지
-UNSEONG_DIR = [1, -1, 1, -1, 1, -1, 1, -1, 1, -1]  # 양간 순행, 음간 역행
+UNSEONG_START = [11, 6, 2, 9, 2, 9, 5, 0, 8, 3]
+UNSEONG_DIR = [1, -1, 1, -1, 1, -1, 1, -1, 1, -1]
 
 
 def sipseong(day_gan, target_gan):
@@ -494,9 +488,7 @@ def unseong(day_gan, ji):
     direction = UNSEONG_DIR[day_gan]
     return UNSEONG_NAMES[((ji - start) * direction) % 12]
 
-# ══════════════════════════════════════════════════════════════════════
-# ── location.py
-# ══════════════════════════════════════════════════════════════════════
+
 """출생지 -> 경도 / 표준시 변환.
 
 역대 표준시 변경과 서머타임은 파이썬 zoneinfo(IANA tzdata)에 위임합니다.
@@ -507,7 +499,6 @@ def unseong(day_gan, ji):
 
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 
 
 @dataclass(frozen=True)
@@ -521,23 +512,9 @@ class Place:
         return ZoneInfo(self.timezone)
 
 
-# 광역 단위(시/도) 이름 -> (경도, IANA 타임존)
-#
-# 이전 버전은 시·군 단위 40여 곳(+해외 30여 곳)을 목록에 올렸지만,
-# "목록에 없으면 경도/타임존을 직접 입력하라"는 방식은 일반 사용자에게
-# 사실상 쓸 수 없는 기능이었습니다(자기 출생지의 경도를 아는 사람은
-# 거의 없습니다). 그래서 버튼 하나로 고를 수 있는 국내 17개 시·도 +
-# 울릉도(경북 본토와 경도 차이가 커서 예외로 분리)로 목록을 좁혔습니다.
-#
-# 경도는 각 도청 소재지(광역시는 시청) 기준입니다. 도 하나를 대표
-# 좌표 하나로 묶으면 그 도 안에서 최대 ±3~5분(경북·강원·전남은 조금
-# 더 커서 최대 ±5분 안팎), 울릉도를 경북에 합칠 경우 최대 ±9분까지
-# 진태양시 오차가 생길 수 있습니다. 이 오차는 시주(時柱)가 걸리는
-# 2시간 경계 부근에서만 실제 판정에 영향을 주며, 그 확률은 낮지만
-# 0은 아닙니다. 해외 출생자는 이 버전부터 지원하지 않습니다.
 _KR = "Asia/Seoul"
 CITIES = {
-    # ── 특별시·광역시·특별자치시 (8) ──
+
     "서울": (126.98, _KR),
     "부산": (129.08, _KR),
     "대구": (128.60, _KR),
@@ -546,18 +523,18 @@ CITIES = {
     "대전": (127.38, _KR),
     "울산": (129.31, _KR),
     "세종": (127.29, _KR),
-    # ── 도 (8, 도청 소재지 기준) ──
-    "경기도": (127.01, _KR),    # 수원
-    "강원도": (127.73, _KR),    # 춘천
-    "충청북도": (127.49, _KR),  # 청주
-    "충청남도": (126.66, _KR),  # 홍성(내포신도시)
-    "전라북도": (127.15, _KR),  # 전주
-    "전라남도": (126.42, _KR),  # 무안(남악신도시)
-    "경상북도": (128.69, _KR),  # 안동(도청신도시)
-    "경상남도": (128.68, _KR),  # 창원
-    # ── 특별자치도 + 예외 (2) ──
+
+    "경기도": (127.01, _KR),
+    "강원도": (127.73, _KR),
+    "충청북도": (127.49, _KR),
+    "충청남도": (126.66, _KR),
+    "전라북도": (127.15, _KR),
+    "전라남도": (126.42, _KR),
+    "경상북도": (128.69, _KR),
+    "경상남도": (128.68, _KR),
+
     "제주도": (126.53, _KR),
-    "울릉도": (130.91, _KR),   # 경북 본토와 경도차가 커서 별도 유지
+    "울릉도": (130.91, _KR),
 }
 
 
@@ -566,18 +543,6 @@ def list_cities():
     return sorted(CITIES)
 
 
-# 표준시가 바뀌는 순간 주변의 벽시계 시각은 세 종류입니다.
-#   normal    — 평범. UTC 로 유일하게 대응됩니다.
-#   ambiguous — 시계를 되돌린 구간. 같은 벽시계 시각이 두 번 존재하며,
-#               어느 쪽인지 출생 기록만으로는 알 수 없습니다.
-#   imaginary — 시계를 앞당긴 구간. 그 벽시계 시각은 존재하지 않습니다.
-#               (출생 기록이 잘못됐거나 서머타임 시행을 모르고 적은 경우)
-#
-# 한국에서 실제로 문제가 되는 구간:
-#   1948~1960 서머타임 해제일의 23:00~23:59  ← 하필 자시(子時) 경계와 겹칩니다
-#   1987·1988 서머타임 해제일의 02:00~02:59
-#   1954-03-20 23:30~23:59 (표준시 +9 -> +8:30, 30분 되돌림)
-#   각 서머타임 시행 개시일과 1961-08-10 00:00~00:29 는 결손 구간
 def classify_local_time(naive, tzinfo):
     """벽시계 시각의 종류를 판정합니다. -> "normal" / "ambiguous" / "imaginary"."""
     a = naive.replace(tzinfo=tzinfo, fold=0)
@@ -627,15 +592,12 @@ def resolve_place(spec, longitude=None, timezone=None):
 
     return Place(name=name, longitude=lon, timezone=tzname)
 
-# ══════════════════════════════════════════════════════════════════════
-# ── chart.py
-# ══════════════════════════════════════════════════════════════════════
+
 """사주 원국(四柱) 및 대운 구성."""
 
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone as _tz
-
 
 
 JASI_SCHOOLS = ("야자시", "정자시")
@@ -700,9 +662,8 @@ class Chart:
     daeun_forward: bool
     daeun: list
     warnings: list = field(default_factory=list)
-    # 결과를 바꾸는 입력인데 예전에는 어디에도 남지 않던 것들.
-    # 나중에 "왜 예전 결과와 다르지?" 를 추적하려면 반드시 있어야 합니다.
-    # (경도보정을 껐는지, 균시차를 켰는지에 따라 시주가 갈립니다.)
+
+
     options: dict = field(default_factory=dict)
 
     @property
@@ -769,7 +730,7 @@ class Chart:
             d = when
         else:
             d = datetime(when.year, when.month, when.day, 12, 0)
-        ipchun = find_solar_term(d.year, 0) + timedelta(hours=9)   # KST
+        ipchun = find_solar_term(d.year, 0) + timedelta(hours=9)
         y = d.year if d >= ipchun else d.year - 1
         return y, self.seun(y)
 
@@ -812,10 +773,10 @@ def build_chart(birth_year, birth_month, birth_day, birth_hour, birth_minute,
     loc = resolve_place(place, longitude, timezone)
     warnings = []
 
-    # ── 1. 벽시계 시각 -> UTC (표준시 변경·서머타임은 tzdata가 처리)
+
     naive = datetime(birth_year, birth_month, birth_day, birth_hour, birth_minute)
 
-    # ── 표준시 전환 경계: 중복/결손 시각 판정
+
     kind = classify_local_time(naive, loc.tz)
     if kind == "ambiguous":
         alt = naive.replace(tzinfo=loc.tz, fold=1)
@@ -845,11 +806,7 @@ def build_chart(birth_year, birth_month, birth_day, birth_hour, birth_minute,
             f"{(naive - timedelta(hours=dst)):%H:%M} 에 해당하며, "
             f"이를 반영해 계산했습니다.")
 
-    # ── 1954-03-21 ~ 1961-08-09: 법정 표준시가 UTC+8:30 이던 구간.
-    # 코드로는 해결할 수 없는 문제입니다. 당시 법정 표준시는 +8:30 이었지만
-    # 병원·관공서 기록이 실제로 +8:30 으로 적혔는지는 기록마다 다릅니다.
-    # 30분은 시주(時柱) 경계를 넘기기에 충분한 크기라, 판정을 단정하는 대신
-    # 두 해석을 함께 알려주는 편이 정직합니다.
+
     if abs(off - dst - 8.5) < 1e-9:
         alt_hour = (naive + timedelta(minutes=30))
         warnings.append(
@@ -859,7 +816,7 @@ def build_chart(birth_year, birth_month, birth_day, birth_hour, birth_minute,
             f"{alt_hour:%H:%M} 에 해당합니다. 시주가 경계에 가깝다면 "
             f"양쪽을 모두 확인하세요.")
 
-    # ── 2. 진태양시. UTC에 경도만 더하므로 표준시가 바뀌어도 안전
+
     shift = loc.longitude / 15.0 if apply_longitude else off
     solar = utc + timedelta(hours=shift)
     if apply_eot:
@@ -869,17 +826,17 @@ def build_chart(birth_year, birth_month, birth_day, birth_hour, birth_minute,
     def to_solar(dt_utc):
         return dt_utc + timedelta(hours=shift)
 
-    # ── 3. 자시 학파: 정자시설은 23시대를 익일 일주로
+
     ref = solar + timedelta(hours=1) if (
         jasi_school == "정자시" and solar.hour == 23) else solar
 
-    # ── 4. 년주 (입춘 기준)
+
     y = ref.year
     if ref < to_solar(find_solar_term(y, 0)):
         y -= 1
     yp = Pillar.from_gapja((y - 1984) % 60)
 
-    # ── 5. 월주 (12절 기준 + 오호둔)
+
     branch, latest = 1, None
     for cy in (ref.year - 1, ref.year):
         for i in JEOL_TO_BRANCH:
@@ -889,15 +846,15 @@ def build_chart(birth_year, birth_month, birth_day, birth_hour, birth_minute,
     inwol = ((yp.gan % 5) * 2 + 2) % 10
     mp = Pillar((inwol + (branch - 2) % 12) % 10, branch)
 
-    # ── 6. 일주 (JDN 기반). 검증: 2000-01-01 = 戊午일
+
     di = (_jdn(ref) + 49) % 60
     dp = Pillar.from_gapja(di)
 
-    # ── 7. 시주 (오서둔)
+
     hb = ((solar.hour + 1) // 2) % 12
     hp = Pillar(((dp.gan % 5) * 2 + hb) % 10, hb)
 
-    # ── 8. 경계 경고
+
     if solar.hour == 23:
         other = "정자시" if jasi_school == "야자시" else "야자시"
         warnings.append(
@@ -913,8 +870,8 @@ def build_chart(birth_year, birth_month, birth_day, birth_hour, birth_minute,
                     f"년주·월주가 갈리는 경계이니 한국천문연구원 등 "
                     f"공식 절기 시각으로 재확인하세요.")
 
-    # ── 9. 대운
-    forward = (yp.gan % 2 == 0) == is_male       # 양남음녀 순행
+
+    forward = (yp.gan % 2 == 0) == is_male
     jeols = sorted(to_solar(find_solar_term(yy, i))
                    for yy in (ref.year - 1, ref.year, ref.year + 1)
                    for i in JEOL_TO_BRANCH)
@@ -946,9 +903,7 @@ def build_chart(birth_year, birth_month, birth_day, birth_hour, birth_minute,
         },
     )
 
-# ══════════════════════════════════════════════════════════════════════
-# ── analysis.py
-# ══════════════════════════════════════════════════════════════════════
+
 """
 사주 분석: 신강신약 판정, 용신 추출, 대운 길흉 채점.
 
@@ -967,9 +922,6 @@ def build_chart(birth_year, birth_month, birth_day, birth_hour, birth_minute,
 from dataclasses import dataclass, field
 
 
-
-# 위치별 가중치. 월지(월령)가 일간의 강약을 가장 크게 좌우한다는
-# 자평명리의 통설을 반영합니다.
 POSITION_WEIGHT = {
     "년간": 0.8, "월간": 1.2, "시간": 1.0,
     "년지": 1.0, "월지": 3.0, "일지": 1.5, "시지": 1.2,
@@ -998,17 +950,13 @@ class Strength:
 class Analysis:
     chart: object
     strength: Strength
-    yongsin: list           # 희용신 (도움이 되는 오행)
-    gisin: list             # 기구신 (부담이 되는 오행)
+    yongsin: list
+    gisin: list
     neutral: list
-    favor: dict             # 오행 -> -1.0 ~ +1.0
+    favor: dict
     reasons: list
     johu_note: str = ""
 
-
-# ═══════════════════════════════════════════════════════════
-# 1. 신강 / 신약
-# ═══════════════════════════════════════════════════════════
 
 def measure_strength(chart):
     """일간의 강약을 위치 가중 합으로 측정."""
@@ -1047,10 +995,6 @@ def measure_strength(chart):
     return Strength(ratio=ratio, label=label, description=desc,
                     ally=ally, enemy=enemy, details=details)
 
-
-# ═══════════════════════════════════════════════════════════
-# 2. 용신 추출 (억부 + 조후 보정)
-# ═══════════════════════════════════════════════════════════
 
 def _johu_adjust(chart, favor, reasons):
     """
@@ -1102,12 +1046,12 @@ def analyze(chart):
     favor = {k: 0.0 for k in "목화토금수"}
     d_elem = GAN_OHAENG[dg]
 
-    # 억부: 약하면 도와주는 오행, 강하면 덜어내는 오행
-    inseong = SAENG_BY[d_elem]       # 나를 생하는 것
-    bigyeop = d_elem                 # 나와 같은 것
-    siksang = SAENG[d_elem]          # 내가 생하는 것
-    jaeseong = GEUK[d_elem]          # 내가 극하는 것
-    gwanseong = GEUK_BY[d_elem]      # 나를 극하는 것
+
+    inseong = SAENG_BY[d_elem]
+    bigyeop = d_elem
+    siksang = SAENG[d_elem]
+    jaeseong = GEUK[d_elem]
+    gwanseong = GEUK_BY[d_elem]
 
     if st.label in ("극신약", "신약"):
         mag = 1.0 if st.label == "극신약" else 0.8
@@ -1132,7 +1076,7 @@ def analyze(chart):
             f"관성({gwanseong})이 희용신, 더 보태는 인성({inseong})·"
             f"비겁({bigyeop})이 기구신입니다.")
     else:
-        # 중화: 오행 개수가 가장 적은 쪽을 보완
+
         c = chart.ohaeng_count()
         lack = sorted(c, key=lambda k: c[k])[:2]
         for e in lack:
@@ -1145,7 +1089,7 @@ def analyze(chart):
 
     johu = _johu_adjust(chart, favor, reasons)
 
-    # 정규화
+
     for k in favor:
         favor[k] = max(-1.0, min(1.0, favor[k]))
 
@@ -1160,11 +1104,6 @@ def analyze(chart):
                     johu_note=johu)
 
 
-# ═══════════════════════════════════════════════════════════
-# 3. 대운 채점
-# ═══════════════════════════════════════════════════════════
-
-# 대운에서 천간보다 지지의 영향이 크다고 보는 통설을 반영
 GAN_WEIGHT, JI_WEIGHT = 0.4, 0.6
 
 GRADE_BANDS = [
@@ -1196,14 +1135,14 @@ def score_daeun(analysis, pillar, age=None):
     notes.append(f"천간 {GAN_H[pillar.gan]}({g_elem}) {label(g_elem)}")
     notes.append(f"지지 {JI_H[pillar.ji]}({j_elem}) {label(j_elem)}")
 
-    # ── 원국 지지와의 충
+
     chung_targets = []
     for lab, p in zip("년월일시", ch.pillars):
         if is_chung(pillar.ji, p.ji):
             chung_targets.append(lab)
     if chung_targets:
         penalty = 0.12 * len(chung_targets)
-        # 월지·일지 충은 더 크게
+
         if "월" in chung_targets or "일" in chung_targets:
             penalty += 0.08
         raw -= penalty
@@ -1211,7 +1150,7 @@ def score_daeun(analysis, pillar, age=None):
             f"{JI_H[pillar.ji]}가 원국 {'·'.join(chung_targets)}지와 충 "
             f"→ 변동·이동 요인 (-{penalty:.2f})")
 
-    # ── 삼합/반합으로 국을 이루는지
+
     for lab, p in zip("년월일시", ch.pillars):
         key = frozenset((pillar.ji, p.ji))
         if key in BANHAP and pillar.ji != p.ji:
@@ -1223,7 +1162,7 @@ def score_daeun(analysis, pillar, age=None):
                     f"{JI_H[pillar.ji]}+{JI_H[p.ji]} 반합 → {elem} 기운 "
                     f"({'강화' if adj > 0 else '부담'} {adj:+.2f})")
 
-    # ── 육합
+
     for lab, p in zip("년월일시", ch.pillars):
         key = frozenset((pillar.ji, p.ji))
         if key in YUKHAP:
@@ -1263,13 +1202,10 @@ def _theme(analysis, pillar):
 def score_all_daeun(analysis):
     return [score_daeun(analysis, p, age) for age, p in analysis.chart.daeun]
 
-# ══════════════════════════════════════════════════════════════════════
-# ── report.py
-# ══════════════════════════════════════════════════════════════════════
+
 """사람이 읽을 수 있는 형태로 결과를 출력합니다."""
 
 from datetime import date
-
 
 
 DISCLAIMER = (
@@ -1279,7 +1215,7 @@ DISCLAIMER = (
     "  이 결과는 자기 성찰의 참고 자료로만 사용하세요."
 )
 
-# 일간 성격 (십천간)
+
 ILGAN_DESC = {
     0: ("큰 나무", "곧게 자라는 힘. 리더십과 명분을 중시하고, 굽히기 어려워합니다."),
     1: ("풀과 넝쿨", "유연하고 적응이 빠릅니다. 실속을 챙기되 우유부단할 수 있습니다."),
@@ -1316,14 +1252,14 @@ def render_text(chart, today=None, width=64):
     a = analyze(chart)
     scores = score_all_daeun(a)
     today = today or date.today()
-    age = today.year - chart.birth_local.year + 1   # 세는나이 기준
+    age = today.year - chart.birth_local.year + 1
 
     L = []
     add = L.append
     line = "═" * width
     thin = "─" * width
 
-    # ── 기본 정보
+
     add(line)
     add("  사주 분석 결과")
     add(line)
@@ -1335,7 +1271,7 @@ def render_text(chart, today=None, width=64):
     add(f"  진태양시: {chart.solar_time:%Y-%m-%d %H:%M}"
         f"   |  자시 기준: {chart.jasi_school}설")
 
-    # ── 원국
+
     add("")
     add(f"{'[ 사주 원국 ]':^{width}}")
     add(thin)
@@ -1345,7 +1281,7 @@ def render_text(chart, today=None, width=64):
     add("".join(f"{JI_H[p.ji]:^17}" for p in order))
     add("".join(f"{p.name:^16}" for p in order))
 
-    # ── 오행
+
     c = chart.ohaeng_count()
     add("")
     add("  오행 분포")
@@ -1359,7 +1295,7 @@ def render_text(chart, today=None, width=64):
             tag = "  ← 부담이 되는 기운"
         add(f"    {k}  {mark:<10} {int(n)}개{tag}")
 
-    # ── 일간 해설
+
     nick, desc = ILGAN_DESC[chart.day_gan]
     add("")
     add(f"{'[ 나는 어떤 사람인가 ]':^{width}}")
@@ -1373,7 +1309,7 @@ def render_text(chart, today=None, width=64):
     if a.johu_note:
         add(f"  {a.johu_note}")
 
-    # ── 용신
+
     add("")
     add("  도움이 되는 기운: " + (", ".join(a.yongsin) or "뚜렷하지 않음"))
     add("  부담이 되는 기운: " + (", ".join(a.gisin) or "뚜렷하지 않음"))
@@ -1384,7 +1320,7 @@ def render_text(chart, today=None, width=64):
         _, _, _, organ = OHAENG_ADVICE[a.gisin[0]]
         add(f"    → 건강은 {organ} 계통을 특히 살피세요")
 
-    # ── 대운
+
     add("")
     add(f"{'[ 10년 주기 흐름 (대운) ]':^{width}}")
     add(thin)
@@ -1400,14 +1336,14 @@ def render_text(chart, today=None, width=64):
             add(f"        · {n}")
         add("")
 
-    # ── 종합 결론
+
     add(f"{'[ 종합 결론 ]':^{width}}")
     add(thin)
     for para in _conclusion(chart, a, scores, age):
         add(_wrap(para, width - 4, "  "))
         add("")
 
-    # ── 경고
+
     if chart.warnings:
         add("  ⚠ 계산상 주의사항")
         for w in chart.warnings:
@@ -1432,16 +1368,16 @@ def render_text_v2(chart, a2=None, today=None, width=64):
     a2 = a2 or analyze_v2(chart)
     scores = score_all_daeun_v2(a2)
     for s in scores:
-        s["theme"] = _theme(a2, s["pillar"])   # v2 채점에는 theme 이 없어 별도 계산
+        s["theme"] = _theme(a2, s["pillar"])
     today = today or date.today()
-    age = today.year - chart.birth_local.year + 1   # 세는나이 기준
+    age = today.year - chart.birth_local.year + 1
 
     L = []
     add = L.append
     line = "═" * width
     thin = "─" * width
 
-    # ── 기본 정보
+
     add(line)
     add("  사주 분석 결과 (V2 — 지장간·통근·계절·종격 반영)")
     add(line)
@@ -1453,7 +1389,7 @@ def render_text_v2(chart, a2=None, today=None, width=64):
     add(f"  진태양시: {chart.solar_time:%Y-%m-%d %H:%M}"
         f"   |  자시 기준: {chart.jasi_school}설")
 
-    # ── 원국
+
     add("")
     add(f"{'[ 사주 원국 ]':^{width}}")
     add(thin)
@@ -1463,7 +1399,7 @@ def render_text_v2(chart, a2=None, today=None, width=64):
     add("".join(f"{JI_H[p.ji]:^17}" for p in order))
     add("".join(f"{p.name:^16}" for p in order))
 
-    # ── 오행
+
     c = chart.ohaeng_count()
     add("")
     add("  오행 분포")
@@ -1477,7 +1413,7 @@ def render_text_v2(chart, a2=None, today=None, width=64):
             tag = "  ← 부담이 되는 기운"
         add(f"    {k}  {mark:<10} {int(n)}개{tag}")
 
-    # ── 일간 해설
+
     nick, desc = ILGAN_DESC[chart.day_gan]
     add("")
     add(f"{'[ 나는 어떤 사람인가 ]':^{width}}")
@@ -1496,14 +1432,14 @@ def render_text_v2(chart, a2=None, today=None, width=64):
     if a2.johu_note:
         add(f"  {a2.johu_note}")
 
-    # ── 격국 교차검증 (v2 전용)
+
     if a2.gyeokguk:
         gk = a2.gyeokguk
         add("")
         add(f"  격국 교차검증: {gk['gyeok_name']} · {gk['verdict']}")
         add(_wrap(gk["note"], width - 4, "    "))
 
-    # ── 용신
+
     add("")
     add("  도움이 되는 기운: " + (", ".join(a2.yongsin) or "뚜렷하지 않음"))
     add("  부담이 되는 기운: " + (", ".join(a2.gisin) or "뚜렷하지 않음"))
@@ -1514,7 +1450,7 @@ def render_text_v2(chart, a2=None, today=None, width=64):
         _, _, _, organ = OHAENG_ADVICE[a2.gisin[0]]
         add(f"    → 건강은 {organ} 계통을 특히 살피세요")
 
-    # ── 대운
+
     add("")
     add(f"{'[ 10년 주기 흐름 (대운) ]':^{width}}")
     add(thin)
@@ -1531,14 +1467,14 @@ def render_text_v2(chart, a2=None, today=None, width=64):
             add(f"        · {n}")
         add("")
 
-    # ── 종합 결론
+
     add(f"{'[ 종합 결론 ]':^{width}}")
     add(thin)
     for para in _conclusion(chart, a2, scores, age):
         add(_wrap(para, width - 4, "  "))
         add("")
 
-    # ── 경고
+
     if chart.warnings:
         add("  ⚠ 계산상 주의사항")
         for w in chart.warnings:
@@ -1608,10 +1544,14 @@ def _conclusion(chart, a, scores, age):
             f"반대로 {worst['age']}~{worst['age']+9}세 "
             f"{worst['pillar'].hanja} 대운은 부담이 큰 구간으로 나옵니다. "
             f"이 시기에는 크게 벌이기보다 지키는 쪽이 안전합니다.")
+    elif worst["age"] <= age < worst["age"] + 10:
+        paras.append(
+            f"가장 힘든 구간으로 나온 {worst['age']}~{worst['age']+9}세를 "
+            f"지금 지나가고 있습니다. 크게 벌이기보다 지키는 쪽이 안전합니다.")
     else:
         paras.append(
             f"가장 힘든 구간으로 나온 {worst['age']}~{worst['age']+9}세는 "
-            f"이미 지나갔습니다.")
+            f"이미 지났습니다.")
 
     if a.yongsin:
         d, col, thing, _ = OHAENG_ADVICE[a.yongsin[0]]
@@ -1672,13 +1612,7 @@ def render_dict(chart, today=None):
         "warnings": chart.warnings,
         "disclaimer": DISCLAIMER,
     }
-# ══════════════════════════════════════════════════════════════
-# 9-b. 내보내기 (JSON / 텍스트) — 재현성 포함 (#7)
-# ══════════════════════════════════════════════════════════════
-#
-# 이미지로만 저장하면 나중에 "왜 예전 결과와 다르지?" 를 추적할 수
-# 없습니다. 결과를 바꾸는 입력(자시 학파·경도보정·균시차·지역)과,
-# 계산에 쓰인 상수(밴드·계수)까지 함께 남겨야 재현이 됩니다.
+
 
 EXPORT_SCHEMA_VERSION = 2
 
@@ -1912,17 +1846,13 @@ def export_text(chart, path=None, a2=None, today=None, width=64,
 
 ELEMS = "목화토금수"
 
-# ══════════════════════════════════════════════════════════════
-# 0. 기초 도구
-# ══════════════════════════════════════════════════════════════
 
-# 삼형·육해 (v1 에는 없던 관계)
 SAMHYEONG = [
-    frozenset((2, 5, 8)),    # 인사신 — 지세지형
-    frozenset((1, 10, 7)),   # 축술미 — 무은지형
+    frozenset((2, 5, 8)),
+    frozenset((1, 10, 7)),
 ]
-JAHYEONG = {4, 6, 9, 11}     # 진오유해 — 자형
-SANGHYEONG = [frozenset((0, 3))]   # 자묘 — 무례지형
+JAHYEONG = {4, 6, 9, 11}
+SANGHYEONG = [frozenset((0, 3))]
 
 YUKHAE = {frozenset((0, 7)), frozenset((1, 6)), frozenset((2, 5)),
           frozenset((3, 4)), frozenset((8, 11)), frozenset((9, 10))}
@@ -1944,14 +1874,14 @@ def wangsang_factor(elem, month_elem):
     令을 剋하는 것 = 囚, 令이 剋하는 것 = 死.
     """
     if elem == month_elem:
-        return WANGSANG_FACTORS["WANG"]           # 旺
+        return WANGSANG_FACTORS["WANG"]
     if SAENG[month_elem] == elem:
-        return WANGSANG_FACTORS["SANG"]           # 相
+        return WANGSANG_FACTORS["SANG"]
     if SAENG[elem] == month_elem:
-        return WANGSANG_FACTORS["HYU"]            # 休
+        return WANGSANG_FACTORS["HYU"]
     if GEUK[elem] == month_elem:
-        return WANGSANG_FACTORS["SU"]             # 囚
-    return WANGSANG_FACTORS["SA"]             # 死
+        return WANGSANG_FACTORS["SU"]
+    return WANGSANG_FACTORS["SA"]
 
 
 def jeol_start_of_month(chart):
@@ -1989,18 +1919,14 @@ def root_strength(elem, chart, effect=None):
     return total
 
 
-# ══════════════════════════════════════════════════════════════
-# 1. 원국 내부 합·충·형 → 글자별 유효도
-# ══════════════════════════════════════════════════════════════
-
 @dataclass
 class NatalField:
-    effect: dict                  # 기둥 index -> 지지 유효도 계수
-    hwa: dict                     # 합으로 강화된 오행 -> 추가 질량
-    events: list                  # 사람이 읽을 근거 문자열
-    broken_month: bool = False    # 월지가 충/형으로 손상됐는가
-    n_natal: int = 4              # 앞의 몇 개가 원국인가 (나머지는 운)
-    transit_labels: tuple = ()    # 운 기둥의 이름 ("대운", "세운" …)
+    effect: dict
+    hwa: dict
+    events: list
+    broken_month: bool = False
+    n_natal: int = 4
+    transit_labels: tuple = ()
 
 
 def natal_field(chart):
@@ -2060,14 +1986,10 @@ def _compute_field(jis, labels, n_natal=4, transit_labels=()):
                 out.append(JI_H[jis[i]])
         return "·".join(out)
 
-    # 완성된 삼합·방합에 흡수된 지지 쌍. 아래 반합 단계에서 제외합니다.
-    # (삼합이 완성되면 그 안의 2글자 반합은 이미 삼합에 포함된 것이므로
-    #  따로 또 가산하면 같은 결합을 두 번 세게 됩니다. 예: 申子辰 완성 시
-    #  2.2 만 들어가야 하는데 子申·子辰·辰申 반합까지 더해져 3.4 가
-    #  들어가던 버그가 있었습니다.)
+
     absorbed = set()
 
-    # ── 삼합 완성 (가장 강한 결합. 세 글자가 한 오행으로 결속)
+
     for combo, elem in SAMHAP.items():
         idxs = [i for i, j in enumerate(jis) if j in combo]
         found = {jis[i] for i in idxs}
@@ -2090,7 +2012,7 @@ def _compute_field(jis, labels, n_natal=4, transit_labels=()):
                     f"원국 삼합 완성 — {show(idxs)} → {elem}국. "
                     f"이 사주는 {elem} 기운이 판을 지배합니다.")
 
-    # ── 방합 완성
+
     for combo, elem in BANGHAP.items():
         idxs = [i for i, j in enumerate(jis) if j in combo]
         if {jis[i] for i in idxs} == combo:
@@ -2107,14 +2029,14 @@ def _compute_field(jis, labels, n_natal=4, transit_labels=()):
                  f"(으)로 방합 완성 — " if via else "원국 방합 완성 — ")
                 + f"{show(idxs)} → {elem} 계절국")
 
-    # ── 반합 (왕지 포함 2글자). 이미 삼합·방합으로 완성된 쌍은 제외.
+
     counted_banhap = set()
     for i in range(n):
         for k in range(i + 1, n):
             key = frozenset((jis[i], jis[k]))
             if len(key) != 2 or key not in BANHAP or key in absorbed:
                 continue
-            # 같은 글자쌍이 여러 자리에 중복돼도 한 번만 셉니다.
+
             if key in counted_banhap:
                 continue
             counted_banhap.add(key)
@@ -2124,12 +2046,12 @@ def _compute_field(jis, labels, n_natal=4, transit_labels=()):
             events.append(
                 f"{mark}반합 {JI_H[jis[i]]}+{JI_H[jis[k]]} → {elem} 반국")
 
-    # ── 육충
+
     for i in range(n):
         for k in range(i + 1, n):
             if is_chung(jis[i], jis[k]):
-                # 인접(년월/월일/일시) 충이 원격 충보다 강함.
-                # 운 기둥은 원국 어느 자리와도 '인접'으로 보지 않습니다.
+
+
                 near = (k - i == 1) and not is_transit(k)
                 dmg = CHUNG_NEAR if near else CHUNG_FAR
                 effect[i] *= dmg
@@ -2141,7 +2063,7 @@ def _compute_field(jis, labels, n_natal=4, transit_labels=()):
                     f"충 {tag(i)} {JI_H[jis[i]]} ↔ {tag(k)} {JI_H[jis[k]]}"
                     f"{' (인접)' if near else ''} → 양쪽 뿌리 손상")
 
-    # ── 삼형
+
     for combo in SAMHYEONG:
         idxs = [i for i, j in enumerate(jis) if j in combo]
         if {jis[i] for i in idxs} == combo:
@@ -2151,7 +2073,7 @@ def _compute_field(jis, labels, n_natal=4, transit_labels=()):
             events.append(
                 f"{mark}삼형 {'·'.join(JI_H[jis[i]] for i in idxs)} → 불안정 요소")
 
-    # ── 육합 (묶여서 제 역할이 둔해짐. 단, 깨진 것은 아님)
+
     for i in range(n):
         for k in range(i + 1, n):
             key = frozenset((jis[i], jis[k]))
@@ -2167,35 +2089,14 @@ def _compute_field(jis, labels, n_natal=4, transit_labels=()):
                       transit_labels=transit_labels)
 
 
-# ══════════════════════════════════════════════════════════════
-# 2. 강약 측정 v2
-# ══════════════════════════════════════════════════════════════
+JI_POS_W = {0: 1.0, 1: 3.0, 2: 1.5, 3: 1.2}
+GAN_POS_W = {0: 0.8, 1: 1.2, 2: 0.0, 3: 1.0}
 
-# 지지 위치 가중치 (v1 과 동일한 통설, 다만 지장간으로 쪼개서 분배)
-JI_POS_W = {0: 1.0, 1: 3.0, 2: 1.5, 3: 1.2}     # 년/월/일/시
-GAN_POS_W = {0: 0.8, 1: 1.2, 2: 0.0, 3: 1.0}    # 일간 본인은 별도 처리
-
-SARYEONG_BONUS = 1.6     # 월령 사령 지장간에 주는 배수
-ROOT_NONE = 0.40         # 무근 천간 감쇄
+SARYEONG_BONUS = 1.6
+ROOT_NONE = 0.40
 ROOT_WEAK = 0.70
-BAND_EDGE = 0.025        # 이 이내면 '경계 판정'으로 표시
+BAND_EDGE = 0.025
 
-
-# ══════════════════════════════════════════════════════════════════
-#  계수 출처 레지스트리 (#2)
-# ══════════════════════════════════════════════════════════════════
-# measure_strength_v2() 의 mass 는 위치 가중치 × 지장간 비율 × 계절 계수
-# × 통근 계수가 곱해져 나옵니다. "왜 이 숫자인가"에 주석으로 답할 수는
-# 없습니다 — 대부분은 문헌에 없는 값이기 때문입니다.
-#
-# 대신 여기서는 두 가지를 합니다.
-#   1) 각 계수가 '어디서 왔는지'를 등급으로 분류합니다.
-#   2) 각 계수를 흔들었을 때 판정이 얼마나 바뀌는지 측정합니다
-#      (sensitivity_report / strength_robustness).
-#
-# 그러면 논쟁이 필요한 계수와 그렇지 않은 계수가 갈립니다. 변동률이
-# 0.7% 인 계수는 값이 무엇이든 결과가 같으므로 근거를 따질 실익이 없고,
-# 변동률이 9% 인 계수에만 근거를 붙이면 됩니다.
 
 COEFF_TIER = {
     "고전": "고전 문헌에 규칙과 수치가 함께 명시됨",
@@ -2242,7 +2143,7 @@ def _build_coefficient_registry():
     def add(key, label, tier, note, get, set_, tunable=True):
         reg.append(Coefficient(key, label, tier, note, get, set_, tunable))
 
-    # ── 위치 가중치 ────────────────────────────────────────────
+
     for idx, pos in enumerate(("년", "월", "일", "시")):
         add(f"JI_POS_W[{pos}]", f"{pos}지 위치 가중치",
             "통설" if idx == 1 else "튜닝",
@@ -2267,7 +2168,7 @@ def _build_coefficient_registry():
             (lambda i=idx: GAN_POS_W[i]),
             (lambda v, i=idx: GAN_POS_W.__setitem__(i, v)))
 
-    # ── 지장간·통근 ────────────────────────────────────────────
+
     add("SARYEONG_BONUS", "월령 사령 지장간 배수", "통설",
         "월지에서 당령(當令)한 지장간을 중히 본다는 것은 통설입니다. "
         "1.6배라는 수치는 튜닝값이며, 민감도가 두 번째로 높습니다.",
@@ -2281,7 +2182,7 @@ def _build_coefficient_registry():
         "여기(餘氣)에만 뿌리를 둔 천간의 감쇄. 수치는 근거 없음.",
         *_mk_global_accessor("ROOT_WEAK"))
 
-    # ── 합·화국 ────────────────────────────────────────────────
+
     add("HWA_SAMHAP", "삼합 화국 가산", "튜닝",
         "삼합이 성립하면 해당 오행이 강해진다는 것은 고전 근거가 "
         "있으나, '+2.2' 라는 절대 가산량은 순수 튜닝값입니다. "
@@ -2304,7 +2205,7 @@ def _build_coefficient_registry():
         "순서일 것이라 짐작하기 쉽지만, 실측은 정반대입니다.",
         *_mk_global_accessor("HWA_BANHAP"))
 
-    # ── 충 ─────────────────────────────────────────────────────
+
     add("CHUNG_NEAR", "인접 충 감쇄", "튜닝",
         "충(沖)은 인접할수록 강하게 작용한다는 것이 통설. "
         "0.62 라는 감쇄율은 튜닝값입니다.",
@@ -2313,7 +2214,7 @@ def _build_coefficient_registry():
         "떨어진 충의 감쇄율. 튜닝값.",
         *_mk_global_accessor("CHUNG_FAR"))
 
-    # ── 계절 계수 ──────────────────────────────────────────────
+
     for name, key in (("旺", "WANG"), ("相", "SANG"), ("休", "HYU"),
                       ("囚", "SU"), ("死", "SA")):
         add(f"WANGSANG_{key}", f"왕상휴수사 — {name}", "통설",
@@ -2332,7 +2233,7 @@ def _build_coefficient_registry():
             (lambda k=key: WANGSANG_FACTORS[k]),
             (lambda v, k=key: WANGSANG_FACTORS.__setitem__(k, v)))
 
-    # ── 점수 배합 ──────────────────────────────────────────────
+
     add("GAN_W", "대운 천간 비중", "튜닝",
         "대운 점수에서 천간:지지 = 0.35:0.65. 지지를 무겁게 본다는 "
         "방향만 통설이고 비율은 튜닝값입니다.",
@@ -2348,9 +2249,6 @@ def _build_coefficient_registry():
     return reg
 
 
-# ── 위 레지스트리가 가리키는, 흩어져 있던 매직넘버들의 이름 부여 ──
-# 예전에는 함수 본문에 2.2 / 1.8 / 0.6 / 0.62 / 0.78 이 직접 박혀 있어서
-# 무엇이 조정 가능한 값인지 알 수 없었습니다.
 HWA_SAMHAP = 2.2
 HWA_BANGHAP = 1.8
 HWA_BANHAP = 0.6
@@ -2506,21 +2404,7 @@ def format_sensitivity_report(rows=None, **kw):
             "1% 미만인 계수는 값이 무엇이든 결과가 거의 같습니다."]
     return "\n".join(out)
 
-# ── 밴드 재보정 (v1 의 숨은 편향 교정) ──────────────────────
-# 아군은 2그룹(비겁·인성), 적군은 3그룹(식상·재성·관성)입니다.
-# 오행이 무작위로 흩어져 있어도 ally/(ally+enemy) 의 기댓값은
-# 0.5 가 아니라 2/5 = 0.40 입니다.
-#
-# 그런데 v1 의 STRENGTH_BANDS 는 0.45~0.55 를 '중화'로 잡습니다.
-# 실제로 무작위 사주 600건을 돌리면 v1 의 중앙값이 0.38 로 나오고,
-# 절반 이상이 자동으로 '신약'으로 밀립니다. 이 편향이 용신을
-# 인성·비겁 쪽으로 과잉 배정하고, 그 결과 대운 길흉이 통째로
-# 어긋납니다. 다른 곳 감정과 정반대 결과가 나오는 주된 원인입니다.
-#
-# 여기서는 절대 임계값 대신, 1960~2000년 1,580건을 샘플링해
-# 얻은 실제 분포의 분위수를 밴드 경계로 씁니다.
-# "이 사주가 전체 인구 중 어느 위치인가"로 읽으면 됩니다.
-# calibrate_bands() 로 직접 다시 뽑을 수 있습니다.
+
 STRENGTH_BANDS_V2 = [
     (0.000, 0.136, "극신약", "일간이 매우 약합니다 (하위 15%)"),
     (0.136, 0.240, "신약",   "일간이 약한 편입니다 (하위 15~35%)"),
@@ -2561,10 +2445,10 @@ class StrengthV2:
     description: str
     ally: float
     enemy: float
-    mass: dict                    # 오행별 실질 질량
+    mass: dict
     details: list
-    confidence: str               # "확실" / "경계"
-    alt_label: str = ""           # 경계일 때 반대편 판정
+    confidence: str
+    alt_label: str = ""
     saryeong: str = ""
     day_root: float = 0.0
     notes: list = field(default_factory=list)
@@ -2579,7 +2463,7 @@ def measure_strength_v2(chart, nf=None):
     details = []
     notes = []
 
-    # ── 월령 사령
+
     try:
         jeol = jeol_start_of_month(chart)
         elapsed = (chart.solar_time - jeol).total_seconds() / 86400.0
@@ -2590,7 +2474,7 @@ def measure_strength_v2(chart, nf=None):
         f"절입 후 {elapsed:.1f}일째 출생 → 월지 {JI_H[chart.month.ji]} 중 "
         f"{GAN_H[sr]}({GAN_OHAENG[sr]})이 사령")
 
-    # ── 지지: 지장간을 일수 비례로 분해
+
     for idx, p in enumerate(chart.pillars):
         base = JI_POS_W[idx] * nf.effect[idx]
         for g, d in JIJANGGAN[p.ji]:
@@ -2603,10 +2487,10 @@ def measure_strength_v2(chart, nf=None):
             details.append((f"{'년월일시'[idx]}지 {JI_H[p.ji]}장간 {GAN_H[g]}",
                             elem, sipseong_by_ohaeng(dg, elem), w))
 
-    # ── 천간: 통근 여부로 실효 가중치 결정
+
     for idx, p in enumerate(chart.pillars):
         if idx == 2:
-            continue                         # 일간은 주체
+            continue
         elem = GAN_OHAENG[p.gan]
         r = root_strength(elem, chart, nf.effect)
         if r >= 0.5:
@@ -2621,12 +2505,12 @@ def measure_strength_v2(chart, nf=None):
                         f"{'(무근)' if rf == ROOT_NONE else ''}",
                         elem, sipseong_by_ohaeng(dg, elem), w))
 
-    # ── 합화 질량 반영
+
     for e, extra in nf.hwa.items():
         if extra:
             mass[e] += extra * wangsang_factor(e, m_elem)
 
-    # ── 아군 / 적군
+
     ally = enemy = 0.0
     for e, v in mass.items():
         if sipseong_by_ohaeng(dg, e) in ("비겁", "인성"):
@@ -2643,7 +2527,7 @@ def measure_strength_v2(chart, nf=None):
             label, desc = lb, ds
             break
 
-    # ── 경계 판정 여부
+
     conf, alt = "확실", ""
     for lo, hi, lb, _ in STRENGTH_BANDS_V2:
         for edge in (lo, hi):
@@ -2660,10 +2544,6 @@ def measure_strength_v2(chart, nf=None):
         saryeong=GAN_H[sr], day_root=day_root, notes=notes)
 
 
-# ══════════════════════════════════════════════════════════════
-# 3. 특수격(종격) 게이트
-# ══════════════════════════════════════════════════════════════
-
 def detect_jonggyeok(chart, st, nf):
     """
     일간이 뿌리도 인성도 없이 고립되면 억부의 '약하니 도와라'가
@@ -2677,18 +2557,17 @@ def detect_jonggyeok(chart, st, nf):
     d_elem = GAN_OHAENG[dg]
     ins = SAENG_BY[d_elem]
 
-    # 게이트를 좁게 잡습니다. 종격은 실무에서도 드문 판정이므로
-    # 애매하면 종하지 않는 쪽(억부 유지)이 안전합니다.
+
     if st.ratio >= 0.10:
         return None
     if st.day_root >= 0.20:
         return None
     if sipseong_by_ohaeng(dg, JI_OHAENG[chart.month.ji]) in ("비겁", "인성"):
-        return None          # 월령을 얻으면 종하지 않음
+        return None
     if st.mass[ins] >= st.ally * 0.55 and st.mass[ins] > 1.2:
-        return None    # 인성이 두터우면 종하지 않음
+        return None
 
-    # 가장 강한 세력으로 종함
+
     cand = {e: st.mass[e] for e in ELEMS
             if sipseong_by_ohaeng(dg, e) not in ("비겁", "인성")}
     winner = max(cand, key=lambda e: cand[e])
@@ -2705,9 +2584,6 @@ def detect_jonggyeok(chart, st, nf):
     }
 
 
-# ══════════════════════════════════════════════════════════════
-# 3-1. 격국(格局) 교차검증 — 억부와 다른 유파의 결론을 나란히 제시
-# ══════════════════════════════════════════════════════════════
 """
 억부용신은 명리학의 여러 유파 중 하나일 뿐입니다. 격국론(格局論)은
 "일간이 강한가 약한가"가 아니라 "월지가 무슨 십성을 뽑아내는가"로
@@ -2724,12 +2600,10 @@ def detect_jonggyeok(chart, st, nf):
 정밀 감정에는 변격 여부를 별도로 검토해야 합니다.
 """
 
-# 격 이름 (월지 정기 십성 기준)
+
 _GYEOK_NAME_OVERRIDE = {"비견": "건록격", "겁재": "양인격"}
 
-# 격국론의 일반적인 용신 원칙(정격 용신 定法)을 단순화한 표.
-# favored: 이 격을 보호·완성한다고 보는 십성 그룹 (상신 후보)
-# disfavored: 이 격을 파(破)한다고 보는 십성 그룹
+
 GYEOKGUK_PRINCIPLE = {
     "비겁": {"favored": ["관성", "식상"], "disfavored": ["인성", "비겁"],
             "note": "건록·양인격은 힘이 넘치므로 관성으로 억제하거나 "
@@ -2770,8 +2644,8 @@ def detect_gyeokguk(chart, favor):
     """
     dg = chart.day_gan
     month_ji = chart.month.ji
-    jeonggi_gan = JIJANGGAN[month_ji][-1][0]     # 월지 지장간의 정기(본기)
-    specific = sipseong(dg, jeonggi_gan)          # 정관/편재/식신 등 구체적 십성
+    jeonggi_gan = JIJANGGAN[month_ji][-1][0]
+    specific = sipseong(dg, jeonggi_gan)
     group = SIPSEONG_GROUP[specific]
     gyeok_name = _GYEOK_NAME_OVERRIDE.get(specific, specific + "격")
 
@@ -2819,65 +2693,53 @@ def detect_gyeokguk(chart, favor):
     }
 
 
-# ══════════════════════════════════════════════════════════════
-# 4. 조후 (일간 × 월지 표 — 궁통보감 계열)
-# ══════════════════════════════════════════════════════════════
-# 궁통보감(窮通寶鑑) 조후용신 원문을 오행 단위로 정리한 전체표입니다.
-# 일간 10개 × 월지 12개 = 120칸 모두 채웠습니다 (이전 버전은 극한월 위주
-# 30여 칸만 있었고 나머지는 온도 휴리스틱 폴백에 의존했습니다).
-#
-# ※ 원전 자체가 유파·판본에 따라 1~2글자 차이가 나는 경우가 있고,
-#   이 표는 그중 한 판본(2차 정리본)을 오행 단위로 단순화한 것입니다.
-#   특정 글자(예: 편재 vs 정재 같은 음양 구분)까지 필요한 정밀 감정에는
-#   원전 대조 검수를 권합니다. key=(일간, 월지) value=(1순위, 2순위)
-
 JOHU_TABLE = {
-    # 갑목
+
     (0, 2): ("화", "수"), (0, 3): ("금", "화"), (0, 4): ("금", "화"),
     (0, 5): ("수", "화"), (0, 6): ("수", "화"), (0, 7): ("수", "화"),
     (0, 8): ("금", "화"), (0, 9): ("금", "화"), (0, 10): ("금", "수"),
     (0, 11): ("금", "화"), (0, 0): ("화", "금"), (0, 1): ("화", "금"),
-    # 을목
+
     (1, 2): ("화", "수"), (1, 3): ("화", "수"), (1, 4): ("수", "화"),
     (1, 5): ("수", "금"), (1, 6): ("수", "화"), (1, 7): ("수", "화"),
     (1, 8): ("화", "수"), (1, 9): ("수", "화"), (1, 10): ("수", "금"),
     (1, 11): ("화", "토"), (1, 0): ("화", "화"), (1, 1): ("화", "화"),
-    # 병화
+
     (2, 2): ("수", "금"), (2, 3): ("수", "목"), (2, 4): ("수", "목"),
     (2, 5): ("수", "금"), (2, 6): ("수", "금"), (2, 7): ("수", "금"),
     (2, 8): ("수", "토"), (2, 9): ("수", "수"), (2, 10): ("목", "수"),
     (2, 11): ("목", "토"), (2, 0): ("수", "토"), (2, 1): ("수", "목"),
-    # 정화
+
     (3, 2): ("목", "금"), (3, 3): ("금", "목"), (3, 4): ("목", "금"),
     (3, 5): ("목", "금"), (3, 6): ("수", "금"), (3, 7): ("목", "수"),
     (3, 8): ("목", "금"), (3, 9): ("목", "금"), (3, 10): ("목", "금"),
     (3, 11): ("목", "금"), (3, 0): ("목", "금"), (3, 1): ("목", "금"),
-    # 무토
+
     (4, 2): ("화", "목"), (4, 3): ("화", "목"), (4, 4): ("목", "화"),
     (4, 5): ("목", "화"), (4, 6): ("수", "목"), (4, 7): ("수", "목"),
     (4, 8): ("화", "목"), (4, 9): ("화", "수"), (4, 10): ("목", "화"),
     (4, 11): ("목", "화"), (4, 0): ("화", "목"), (4, 1): ("화", "목"),
-    # 기토
+
     (5, 2): ("화", "수"), (5, 3): ("목", "화"), (5, 4): ("화", "목"),
     (5, 5): ("수", "화"), (5, 6): ("수", "화"), (5, 7): ("수", "화"),
     (5, 8): ("화", "수"), (5, 9): ("화", "수"), (5, 10): ("목", "화"),
     (5, 11): ("화", "목"), (5, 0): ("화", "목"), (5, 1): ("화", "목"),
-    # 경금
+
     (6, 2): ("토", "목"), (6, 3): ("화", "목"), (6, 4): ("목", "화"),
     (6, 5): ("수", "토"), (6, 6): ("수", "수"), (6, 7): ("화", "목"),
     (6, 8): ("화", "목"), (6, 9): ("화", "목"), (6, 10): ("목", "수"),
     (6, 11): ("화", "화"), (6, 0): ("화", "목"), (6, 1): ("화", "목"),
-    # 신금
+
     (7, 2): ("토", "수"), (7, 3): ("수", "목"), (7, 4): ("수", "목"),
     (7, 5): ("수", "목"), (7, 6): ("수", "토"), (7, 7): ("수", "금"),
     (7, 8): ("수", "목"), (7, 9): ("수", "목"), (7, 10): ("수", "화"),
     (7, 11): ("수", "화"), (7, 0): ("화", "토"), (7, 1): ("화", "수"),
-    # 임수
+
     (8, 2): ("금", "화"), (8, 3): ("토", "금"), (8, 4): ("목", "금"),
     (8, 5): ("수", "금"), (8, 6): ("수", "금"), (8, 7): ("금", "목"),
     (8, 8): ("토", "화"), (8, 9): ("목", "금"), (8, 10): ("목", "화"),
     (8, 11): ("토", "화"), (8, 0): ("토", "화"), (8, 1): ("화", "목"),
-    # 계수
+
     (9, 2): ("금", "화"), (9, 3): ("금", "금"), (9, 4): ("화", "금"),
     (9, 5): ("금", "금"), (9, 6): ("금", "수"), (9, 7): ("금", "수"),
     (9, 8): ("화", "목"), (9, 9): ("금", "화"), (9, 10): ("금", "목"),
@@ -2897,7 +2759,7 @@ def johu_v2(chart, favor, reasons):
         return (f"{JI_SEASON[chart.month.ji]}에 태어난 "
                 f"{GAN_H[chart.day_gan]}({GAN_OHAENG[chart.day_gan]}) 일간이라 "
                 f"{first} 기운으로 온도를 맞추는 것이 급선무로 봅니다.")
-    # 폴백: 원본의 온도 휴리스틱
+
     c = chart.ohaeng_count()
     hot = c["화"] + c["토"] * 0.5
     cold = c["수"] + c["금"] * 0.5
@@ -2912,10 +2774,6 @@ def johu_v2(chart, favor, reasons):
     return ""
 
 
-# ══════════════════════════════════════════════════════════════
-# 5. 종합 분석 v2
-# ══════════════════════════════════════════════════════════════
-
 @dataclass
 class AnalysisV2:
     chart: object
@@ -2926,10 +2784,10 @@ class AnalysisV2:
     gisin: list
     neutral: list
     favor: dict
-    favor_alt: dict            # 경계 판정일 때의 반대 시나리오
+    favor_alt: dict
     reasons: list
     johu_note: str = ""
-    gyeokguk: object = None    # 격국 교차검증 결과 (detect_gyeokguk 반환값)
+    gyeokguk: object = None
 
 
 def _eokbu_favor(dg, label):
@@ -2971,10 +2829,10 @@ def analyze_v2(chart):
         w = special["elem"]
         favor = {e: 0.0 for e in ELEMS}
         favor[w] += 1.0
-        favor[SAENG_BY[w]] += 0.6          # 종한 오행을 생하는 것도 길
+        favor[SAENG_BY[w]] += 0.6
         favor[SAENG[w]] += 0.3
         d = GAN_OHAENG[dg]
-        favor[d] -= 0.9                    # 일간을 되살리는 기운이 흉
+        favor[d] -= 0.9
         favor[SAENG_BY[d]] -= 1.0
     else:
         favor = _eokbu_favor(dg, st.label)
@@ -3011,10 +2869,6 @@ def analyze_v2(chart):
                       favor_alt=favor_alt, reasons=reasons, johu_note=johu,
                       gyeokguk=gyeokguk)
 
-
-# ══════════════════════════════════════════════════════════════
-# 5-b. 운(대운·세운) 반영 질량 재계산 — 참고 판정 (#3)
-# ══════════════════════════════════════════════════════════════
 
 def measure_strength_with_transit(a2, *transit_pillars, labels=None):
     """대운·세운을 얹어 원국 오행 질량을 재계산합니다 (#3) — '참고 판정'.
@@ -3198,10 +3052,6 @@ def render_hwaguk_section(a2, width=64, today=None):
     return L
 
 
-# ══════════════════════════════════════════════════════════════
-# 6. 대운 채점 v2
-# ══════════════════════════════════════════════════════════════
-
 GAN_W, JI_W = 0.35, 0.65
 
 
@@ -3244,7 +3094,7 @@ def score_daeun_v2(a2, pillar, age=None):
     if gj_note:
         notes.append(gj_note)
 
-    # 대운 천간의 통근 — 원국 + 대운 자신의 지지
+
     r = root_strength(g_elem, ch, a2.field.effect)
     if g_elem in [GAN_OHAENG[g] for g, _ in JIJANGGAN[pillar.ji]]:
         r += 0.5
@@ -3264,7 +3114,7 @@ def score_daeun_v2(a2, pillar, age=None):
     notes.insert(0, f"천간 {GAN_H[pillar.gan]}({g_elem}) {lab(g_elem)} "
                     f"[전반 5년] {gan_score:+.2f}")
 
-    # ── 삼합/방합 완성 → 化局 (단순 가감이 아니라 판을 바꿈)
+
     hwa_adj = 0.0
     for combo, elem in list(SAMHAP.items()) + list(BANGHAP.items()):
         if pillar.ji not in combo:
@@ -3286,12 +3136,12 @@ def score_daeun_v2(a2, pillar, age=None):
                     f"대운 {JI_H[pillar.ji]} 반합 → {elem} 기운 "
                     f"({favor[elem] * 0.16:+.2f})")
 
-    # ── 충
+
     chung_pen = 0.0
     for i, j in enumerate(jis):
         if is_chung(pillar.ji, j):
             w = {0: 0.10, 1: 0.22, 2: 0.20, 3: 0.10}[i]
-            # 충 맞는 글자가 기신이면 충이 오히려 반가움
+
             tgt = JI_OHAENG[j]
             if favor[tgt] <= -0.3:
                 chung_pen -= w * 0.5
@@ -3304,7 +3154,7 @@ def score_daeun_v2(a2, pillar, age=None):
                     f"{JI_H[pillar.ji]}가 원국 {labels[i]}지 {JI_H[j]}를 충 "
                     f"→ 변동·이동 (-{w:.2f})")
 
-    # ── 형 / 해
+
     for i, j in enumerate(jis):
         key = frozenset((pillar.ji, j))
         if any(pillar.ji in c and j in c for c in SAMHYEONG) and pillar.ji != j:
@@ -3313,7 +3163,7 @@ def score_daeun_v2(a2, pillar, age=None):
         if key in YUKHAE:
             chung_pen += 0.04
 
-    # ── 천간합 (대운 천간이 원국 천간과 합해 묶임)
+
     for i, p in enumerate(ch.pillars):
         key = frozenset((pillar.gan, p.gan))
         if len(key) == 2 and key in CHEONGAN_HAP:
@@ -3360,32 +3210,18 @@ def score_all_daeun_v2(a2, normalize=True):
     for rank, i in enumerate(order, 1):
         out[i]["rank"] = rank
         out[i]["rel"] = 0.5 if span < 1e-9 else (vals[i] - lo) / span
-        # rank 가 절대 등급으로 오해되지 않도록 범위를 함께 실어 보냅니다 (#5).
+
         out[i]["rank_scope"] = f"본인 대운 {len(out)}구간"
         out[i]["rank_is_relative"] = True
-        # 절대점수가 ±1 로 포화되면 grade 로는 구간이 구분되지 않습니다.
-        # 그때는 rank 만이 유일한 구분 수단이라는 사실을 알려야 합니다.
+
+
         out[i]["score_saturated"] = abs(out[i]["score"]) >= 1.0 - 1e-9
         out[i]["n_saturated"] = saturated
     return out
 
 
-# ══════════════════════════════════════════════════════════════
-# 6-b. 세운(1년 주기) 채점 — 대운·세운·원국 3자 관계 (#6)
-# ══════════════════════════════════════════════════════════════
-#
-# 세운 점수는 대운 점수와 '같은 축이 아닙니다'. 두 값을 더하거나
-# 평균 내지 마세요 — 어느 비율로 섞어야 하는지에 대한 근거가 없습니다.
-# 대운은 10년의 배경, 세운은 그 해의 사건이라는 서로 다른 층입니다.
-# 그래서 아래 함수는 두 점수를 별도 필드로 돌려주고, 합산하지 않습니다.
-#
-# 실무에서 가장 크게 보는 지점은 '3자 관계'입니다. 원국에 두 글자,
-# 대운에 한 글자가 있어 삼합이 대기 중일 때 세운이 마지막 글자를 들고
-# 들어오는 경우, 또는 세운이 대운 지지를 충하는 경우 등입니다.
-# 원국-세운 2자만 보면 이런 사건이 통째로 보이지 않습니다.
-
 SEUN_CHUNG_W = {"대운": 0.20, "년": 0.08, "월": 0.18, "일": 0.16, "시": 0.08}
-SEUN_HWA_SAMHAP = 0.40      # 세운이 삼합을 완성시킬 때
+SEUN_HWA_SAMHAP = 0.40
 SEUN_HWA_BANGHAP = 0.32
 SEUN_HWA_BANHAP = 0.12
 
@@ -3428,7 +3264,7 @@ def score_seun_v2(a2, seun_pillar, daeun_pillar=None, year=None):
     notes.insert(0, f"천간 {GAN_H[seun_pillar.gan]}({g_elem}) {lab(g_elem)} "
                     f"{gan_score:+.2f}")
 
-    # ── 3자 화국: 원국 + 대운 + 세운
+
     pool = list(jis)
     if daeun_pillar is not None:
         pool.append(daeun_pillar.ji)
@@ -3456,7 +3292,7 @@ def score_seun_v2(a2, seun_pillar, daeun_pillar=None, year=None):
                 notes.append(f"세운 반합 → {elem} 기운 "
                              f"({favor[elem] * SEUN_HWA_BANHAP:+.2f})")
 
-    # ── 충 (원국 + 대운)
+
     chung_pen = 0.0
     targets = [(labels[i], j) for i, j in enumerate(jis)]
     if daeun_pillar is not None:
@@ -3477,7 +3313,7 @@ def score_seun_v2(a2, seun_pillar, daeun_pillar=None, year=None):
                          f"{'지' if name in labels else ''} {JI_H[j]}를 충 "
                          f"→ 변동 (-{w:.2f})")
 
-    # ── 천간합
+
     for i, p in enumerate(ch.pillars):
         key = frozenset((seun_pillar.gan, p.gan))
         if len(key) == 2 and key in CHEONGAN_HAP:
@@ -3523,7 +3359,7 @@ def score_seun_range(a2, start_year, count=10, normalize=True):
     birth_year = ch.birth_local.year
     out = []
     for y in range(start_year, start_year + count):
-        age = y - birth_year + 1                     # 세는나이
+        age = y - birth_year + 1
         du = ch.daeun_at(age)
         out.append(score_seun_v2(a2, ch.seun(y),
                                  du[1] if du else None, year=y))
@@ -3539,9 +3375,6 @@ def score_seun_range(a2, start_year, count=10, normalize=True):
     return out
 
 
-# ══════════════════════════════════════════════════════════════
-# 7. 신살(神殺) — 원국 기준 판정
-# ══════════════════════════════════════════════════════════════
 """
 신살은 억부·격국과는 또 다른 갈래의 명리 도구입니다. "이 사주가 강한가
 약한가"를 묻지 않고, 특정 글자 조합 자체에 전통적으로 붙어온 상징을
@@ -3556,38 +3389,37 @@ def score_seun_range(a2, start_year, count=10, normalize=True):
 보여줍니다. 어느 기준이 '맞다'고 단정하지 않는 것 자체가 근거입니다.
 """
 
-# 삼합 그룹 이름 -> 지지 인덱스 집합
+
 _SAMHAP_GROUPS = {
     "인오술": frozenset((2, 6, 10)),
     "사유축": frozenset((5, 9, 1)),
     "신자진": frozenset((8, 0, 4)),
     "해묘미": frozenset((11, 3, 7)),
 }
-# 각 삼합 그룹의 도화(桃花)/역마(驛馬)/화개(華蓋) 지지
+
 _DOHWA_TARGET = {"인오술": 3, "사유축": 6, "신자진": 9, "해묘미": 0}
 _YEOKMA_TARGET = {"인오술": 8, "사유축": 11, "신자진": 2, "해묘미": 5}
 _HWAGAE_TARGET = {"인오술": 10, "사유축": 1, "신자진": 4, "해묘미": 7}
 
-# 천을귀인(일간 -> 지지 2개)
+
 _CHEONEUL = {
-    0: {1, 7}, 4: {1, 7}, 6: {1, 7},   # 갑·무·경 -> 축·미
-    1: {0, 8}, 5: {0, 8},              # 을·기 -> 자·신
-    2: {11, 9}, 3: {11, 9},            # 병·정 -> 해·유
-    8: {3, 5}, 9: {3, 5},              # 임·계 -> 묘·사
-    7: {6, 2},                         # 신 -> 오·인
+    0: {1, 7}, 4: {1, 7}, 6: {1, 7},
+    1: {0, 8}, 5: {0, 8},
+    2: {11, 9}, 3: {11, 9},
+    8: {3, 5}, 9: {3, 5},
+    7: {6, 2},
 }
 
-# 양인(陽刃, 양간만 — 음간은 유파차가 커서 제외)
-_YANGIN = {0: 3, 2: 6, 4: 6, 6: 9, 8: 0}   # 갑->묘 병무->오 경->유 임->자
 
-# 괴강(魁罡, 일주 4개)
-_GOEGANG_PAIRS = {(6, 4), (6, 10), (8, 4), (4, 10)}   # 경진 경술 임진 무술
+_YANGIN = {0: 3, 2: 6, 4: 6, 6: 9, 8: 0}
 
-# 백호대살(白虎大殺, 어느 기둥이든 7개 간지)
+
+_GOEGANG_PAIRS = {(6, 4), (6, 10), (8, 4), (4, 10)}
+
+
 _BAEKHO_PAIRS = {(0, 4), (1, 7), (2, 10), (3, 1), (4, 4), (8, 10), (9, 1)}
-# 갑진 을미 병술 정축 무진 임술 계축
 
-# 공망(空亡, 순중공망 — 일주 gapja // 10 으로 순 결정)
+
 _GONGMANG_TABLE = [(10, 11), (8, 9), (6, 7), (4, 5), (2, 3), (0, 1)]
 
 
@@ -3605,7 +3437,7 @@ def detect_sinsal(chart):
     out = []
     pillars = list(zip("년월일시", chart.pillars))
 
-    # ── 도화 / 역마 / 화개 (년지·일지 두 기준 모두 계산) ──
+
     triples = [
         ("도화살", _DOHWA_TARGET,
          "인기·매력, 주목받는 자리와 연결짓는 것이 전통적 해석입니다."),
@@ -3631,7 +3463,7 @@ def detect_sinsal(chart):
                              f"{'·'.join(hits)}에 있습니다. {desc}"),
                 })
 
-    # ── 천을귀인 ──
+
     dg = chart.day_gan
     targets = _CHEONEUL.get(dg)
     if targets:
@@ -3645,7 +3477,7 @@ def detect_sinsal(chart):
                          f"어려운 상황에서 도움을 받는 힘과 연결짓는 것이 통설입니다."),
             })
 
-    # ── 양인살 ──
+
     target = _YANGIN.get(dg)
     if target is not None:
         hits = [lab for lab, p in pillars if p.ji == target]
@@ -3659,7 +3491,7 @@ def detect_sinsal(chart):
                          f"강한 추진력으로도 해석합니다."),
             })
 
-    # ── 괴강살 (일주만 판정) ──
+
     if (chart.day.gan, chart.day.ji) in _GOEGANG_PAIRS:
         out.append({
             "name": "괴강살", "basis": "일주",
@@ -3669,7 +3501,7 @@ def detect_sinsal(chart):
                      f"연결짓는 것이 통설입니다."),
         })
 
-    # ── 백호대살 (모든 기둥 판정) ──
+
     hits = [lab for lab, p in pillars if (p.gan, p.ji) in _BAEKHO_PAIRS]
     if hits:
         out.append({
@@ -3680,7 +3512,7 @@ def detect_sinsal(chart):
                      f"연결짓는 것이 통설입니다."),
         })
 
-    # ── 공망 ──
+
     soon_idx = chart.day.gapja // 10
     gm_targets = _GONGMANG_TABLE[soon_idx]
     hits = [lab for lab, p in pillars if p.ji in gm_targets and lab != "일"]
@@ -3697,10 +3529,6 @@ def detect_sinsal(chart):
 
     return out
 
-
-# ══════════════════════════════════════════════════════════════
-# 8. 비교 출력
-# ══════════════════════════════════════════════════════════════
 
 def _ratio_bar(v, width=18):
     """0.0~1.0 비율용 막대.
@@ -3733,7 +3561,7 @@ def render_compare(chart):
     L.append("\n[ 강약 판정 ]")
     L.append(f"  v1  {a1.strength.ratio:6.1%}  {a1.strength.label:6s} "
              f"용신 {'·'.join(a1.yongsin) or '-'}")
-    tag = "" if a2.strength.confidence == "확실" else \
+    tag = "" if a2.strength.confidence == "확실" else\
         f"  ⚠ {a2.strength.alt_label} 과의 경계"
     L.append(f"  v2  {a2.strength.ratio:6.1%}  {a2.strength.label:6s} "
              f"용신 {'·'.join(a2.yongsin) or '-'}{tag}")
@@ -3758,7 +3586,7 @@ def render_compare(chart):
     L.append(f"  {'구간':>10}  {'간지':^5}  {'v1':^12}     {'v2':^12}   상대순위")
     L.append("  " + "─" * 66)
     for x, y in zip(s1, s2):
-        flip = "  ← 판정 뒤집힘" if (x["score"] > 0.2) != (y["score"] > 0.2) \
+        flip = "  ← 판정 뒤집힘" if (x["score"] > 0.2) != (y["score"] > 0.2)\
             and abs(x["score"] - y["score"]) > 0.3 else ""
         L.append(
             f"  {x['age']:>3}~{x['age'] + 9:<3}세  {x['pillar'].hanja}  "
@@ -3792,33 +3620,26 @@ def render_compare(chart):
     return "\n".join(L)
 
 
-
-# ══════════════════════════════════════════════════════════════════════
-# ── gui.py  (여기서부터 화면 부분입니다. 위쪽은 전부 계산 엔진입니다)
-# ══════════════════════════════════════════════════════════════════════
-
-# ── 0. 테마 (오방색 — 목·화·토·금·수를 전통 색으로) ──────────────────
-
 ELEM_COLOR = {
-    "목": "#3C8C5C",   # 청 — 초록빛
-    "화": "#D1495B",   # 적
-    "토": "#D9A441",   # 황
-    "금": "#8E8779",   # 백 (배경이 밝아 살짝 어둡게 조정)
-    "수": "#2B3A67",   # 흑 — 남색
+    "목": "#3C8C5C",
+    "화": "#D1495B",
+    "토": "#D9A441",
+    "금": "#8E8779",
+    "수": "#2B3A67",
 }
 ELEM_COLOR_SOFT = {
     "목": "#DDEEE1", "화": "#F6D9DC", "토": "#F5E7C7",
     "금": "#E6E3DC", "수": "#DCE0EC",
 }
 
-BG_ROOT = "#EFE9DA"        # 한지 느낌의 아이보리
-BG_SIDEBAR = "#1C2033"     # 짙은 남색
+BG_ROOT = "#EFE9DA"
+BG_SIDEBAR = "#1C2033"
 BG_SIDEBAR2 = "#262B45"
 BG_CARD = "#FFFFFF"
 BG_CARD_ALT = "#F7F2E7"
 FG_SIDEBAR = "#EDE9DD"
 FG_SIDEBAR_MUTE = "#9AA0C0"
-ACCENT = "#C9A227"         # 금박 골드
+ACCENT = "#C9A227"
 ACCENT_DARK = "#A6821C"
 TEXT_MAIN = "#2B2924"
 TEXT_MUTE = "#7C7666"
@@ -3841,11 +3662,9 @@ def _pick_font(candidates, default="TkDefaultFont"):
 KOR_CANDIDATES = ["Malgun Gothic", "AppleGothic", "NanumGothic",
                   "Noto Sans CJK KR", "Noto Sans KR", "맑은 고딕", "Apple SD Gothic Neo"]
 
-# 전역 폰트 이름 (Tk 루트가 생겨야 families() 조회가 되므로 지연 초기화)
+
 KOR_FONT = "TkDefaultFont"
 
-
-# ── 1. 캔버스 드로잉 헬퍼 (matplotlib 없이 직접 그림) ─────────────────
 
 def rounded_rect(canvas, x1, y1, x2, y2, r=14, **kw):
     r = min(r, abs(x2 - x1) / 2, abs(y2 - y1) / 2)
@@ -4013,11 +3832,6 @@ def h3(master, text, bg=BG_CARD, fg=TEXT_MAIN):
     return tk.Label(master, text=text, bg=bg, fg=fg, font=(KOR_FONT, 12, "bold"))
 
 
-# ══════════════════════════════════════════════════════════════════════
-# 2. 메인 애플리케이션
-# ══════════════════════════════════════════════════════════════════════
-
-# 계산 옵션 설명 (툴팁용)
 OPT_HELP = {
     "야자시": ("23시~24시(자시) 출생자의 일주를 그날(당일)의 일주로 봅니다.\n"
               "실무에서 가장 널리 쓰이는 방식입니다."),
@@ -4058,7 +3872,7 @@ class SajuApp(tk.Tk):
         except Exception:
             return "TkDefaultFont"
 
-    # ── 스타일 ──────────────────────────────────────────────
+
     def _setup_style(self):
         style = ttk.Style(self)
         try:
@@ -4099,7 +3913,7 @@ class SajuApp(tk.Tk):
                  foreground=[("selected", TEXT_MAIN)])
         style.layout("Saju.Treeview", [('Saju.Treeview.treearea', {'sticky': 'nswe'})])
 
-    # ── 레이아웃 ────────────────────────────────────────────
+
     def _build_layout(self):
         self._build_header()
 
@@ -4151,10 +3965,7 @@ class SajuApp(tk.Tk):
                     "이 결과에 대해 추가로 질문할 때 사용하세요.\n"
                     f"({version.upper()} 사주 탭 전체 내용을 이미지로 저장합니다)")
 
-        # ── 텍스트 / JSON 내보내기 (#7)
-        # 이미지는 나중에 검색·비교가 안 됩니다. 재현 정보(엔진 버전,
-        # tzdata, 밴드, 계수 지문, 입력 옵션)까지 함께 남기려면 텍스트나
-        # JSON 이어야 합니다.
+
         btn_json = tk.Button(
             bar, text="{ }  JSON", font=(KOR_FONT, 9, "bold"),
             bg=BG_CARD_ALT, fg=TEXT_MAIN, activebackground=BG_CARD,
@@ -4182,7 +3993,7 @@ class SajuApp(tk.Tk):
         if chart is None:
             messagebox.showinfo("내보내기", "먼저 사주를 계산해 주세요.")
             return
-        a2 = getattr(self, "a2", None)          # 이미 계산돼 있으면 재사용
+        a2 = getattr(self, "a2", None)
         stamp = chart.birth_local.strftime("%Y%m%d_%H%M")
         default = f"saju_{stamp}.{kind}"
         path = filedialog.asksaveasfilename(
@@ -4245,7 +4056,7 @@ class SajuApp(tk.Tk):
         """저장된 파일을 OS 기본 프로그램으로 엽니다."""
         try:
             if sys.platform.startswith("win"):
-                os.startfile(path)  # noqa: (Windows 전용 API)
+                os.startfile(path)
             elif sys.platform == "darwin":
                 subprocess.Popen(["open", path])
             else:
@@ -4278,7 +4089,7 @@ class SajuApp(tk.Tk):
                         fg=TEXT_MUTE, font=(KOR_FONT, 8), wraplength=1100, justify="left")
         foot.pack(fill="x", padx=18, pady=(6, 10))
 
-    # ── 사이드바(입력 폼) ───────────────────────────────────
+
     def _build_sidebar(self, parent):
         side = tk.Frame(parent, bg=BG_SIDEBAR, width=330)
         side.pack(side="left", fill="y")
@@ -4294,7 +4105,7 @@ class SajuApp(tk.Tk):
             tk.Label(f, text=text, bg=BG_SIDEBAR, fg=FG_SIDEBAR_MUTE,
                      font=(KOR_FONT, 9, "bold")).pack(anchor="w", **PAD)
 
-        # 성별
+
         label("성별")
         gwrap = tk.Frame(f, bg=BG_SIDEBAR)
         gwrap.pack(fill="x", padx=20)
@@ -4304,7 +4115,7 @@ class SajuApp(tk.Tk):
         self.btn_male.pack(side="left", fill="x", expand=True, padx=(0, 4))
         self.btn_female.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
-        # 생년월일
+
         label("생년월일")
         dwrap = tk.Frame(f, bg=BG_SIDEBAR)
         dwrap.pack(fill="x", padx=20)
@@ -4318,7 +4129,7 @@ class SajuApp(tk.Tk):
         self._spin(dwrap, self.day_var, 1, 31, 3).pack(side="left")
         tk.Label(dwrap, text="일", bg=BG_SIDEBAR, fg=FG_SIDEBAR_MUTE).pack(side="left", padx=3)
 
-        # 시각
+
         label("태어난 시각")
         twrap = tk.Frame(f, bg=BG_SIDEBAR)
         twrap.pack(fill="x", padx=20)
@@ -4336,11 +4147,7 @@ class SajuApp(tk.Tk):
                         variable=self.unknown_time, style="Side.TCheckbutton",
                         command=self._toggle_time).pack(anchor="w", padx=20, pady=(4, 0))
 
-        # 출생지 — 시/도 단위 버튼 (수도권 / 충청·강원 / 호남 / 영남 / 제주·울릉)
-        # 목록에 없으면 경도/타임존을 직접 입력하는 예전 방식은 없앴습니다.
-        # 대부분의 사용자는 자기 출생지의 경도를 모르기 때문에, 그 기능은
-        # 실제로는 "쓸 수 없는 고급 옵션"에 가까웠습니다. 대신 국내 시/도
-        # 18개(울릉도 포함) 중에서 버튼으로 고르는 방식으로 바꿨습니다.
+
         label("출생지")
         self.city_var = tk.StringVar(value="대구")
 
@@ -4370,12 +4177,12 @@ class SajuApp(tk.Tk):
                  bg=BG_SIDEBAR, fg=FG_SIDEBAR_MUTE, font=(KOR_FONT, 8),
                  wraplength=260, justify="left").pack(anchor="w", padx=20, pady=(8, 0))
 
-        # ── 계산 옵션 (야자시/정자시, 진태양시 보정, 균시차 보정 — 한데 묶어 겉으로) ──
+
         label("계산 옵션")
         opt_card = tk.Frame(f, bg=BG_SIDEBAR2)
         opt_card.pack(fill="x", padx=20, pady=(0, 4))
 
-        # 자시 기준
+
         jrow = tk.Frame(opt_card, bg=BG_SIDEBAR2)
         jrow.pack(fill="x", padx=10, pady=(10, 4))
         tk.Label(jrow, text="23시대 출생자 일주 기준", bg=BG_SIDEBAR2, fg=FG_SIDEBAR_MUTE,
@@ -4393,7 +4200,7 @@ class SajuApp(tk.Tk):
         sep1 = tk.Frame(opt_card, bg="#3A4066", height=1)
         sep1.pack(fill="x", padx=10)
 
-        # 진태양시 보정 / 균시차 보정 — on/off 버튼
+
         self.apply_lon = tk.BooleanVar(value=True)
         self.apply_eot = tk.BooleanVar(value=False)
         self.btn_lon = self._onoff_btn(opt_card, "진태양시 경도 보정", self.apply_lon)
@@ -4404,7 +4211,7 @@ class SajuApp(tk.Tk):
         self.btn_eot.pack(fill="x", padx=10, pady=(4, 10))
         ToolTip(self.btn_eot, OPT_HELP["균시차"])
 
-        # 계산 버튼
+
         btn_wrap = tk.Frame(f, bg=BG_SIDEBAR)
         btn_wrap.pack(fill="x", padx=20, pady=(22, 6))
         self.calc_btn = tk.Button(
@@ -4489,7 +4296,7 @@ class SajuApp(tk.Tk):
         self.city_var.set("서울")
         self.jasi_var.set("야자시")
 
-    # ── 계산 실행 ───────────────────────────────────────────
+
     def on_calculate(self):
         self.status_label.config(text="")
         try:
@@ -4515,7 +4322,7 @@ class SajuApp(tk.Tk):
     def _compute(self, kwargs):
         try:
             chart = build_chart(**kwargs)
-            self._log_usage(chart)   # 계산 성공 시점에 사용 로그 기록 (실패해도 무시)
+            self._log_usage(chart)
             a1 = analyze(chart)
             s1 = score_all_daeun(a1)
             a2 = analyze_v2(chart)
@@ -4580,7 +4387,7 @@ class SajuApp(tk.Tk):
             )
             urllib.request.urlopen(req, timeout=LOG_TIMEOUT_SEC)
         except Exception:
-            pass   # 로그 실패는 조용히 무시 — 사용자 계산 흐름을 막지 않습니다.
+            pass
 
     def _poll_queue(self):
         try:
@@ -4599,7 +4406,7 @@ class SajuApp(tk.Tk):
             pass
         self.after(120, self._poll_queue)
 
-    # ── 탭 스크린샷 캡쳐 (AI 챗봇 추가 질문용) ──────────────────
+
     def _capture_tab_image(self, version):
         if not _PIL_AVAILABLE:
             messagebox.showwarning(
@@ -4635,7 +4442,7 @@ class SajuApp(tk.Tk):
             vp_h = canvas.winfo_height()
             orig_frac = canvas.yview()[0]
 
-            # 스크롤 가능한 전체 내용을 여러 장으로 나눠 캡쳐한 뒤 이어붙입니다.
+
             if content_h <= vp_h:
                 offsets = [0]
             else:
@@ -4670,12 +4477,12 @@ class SajuApp(tk.Tk):
         except Exception as e:
             messagebox.showerror("캡쳐 오류", f"이미지 캡쳐 중 오류가 발생했습니다.\n\n{e}")
 
-    # ── 전체 탭 렌더링 ──────────────────────────────────────
+
     def _render_all(self):
         self._render_version("v1")
         self._render_version("v2")
 
-    # ══════════════════ V1 사주 / V2 사주 (공통 렌더러) ══════════════════
+
     def _render_version(self, version):
         """version: 'v1' 또는 'v2'. 두 탭이 같은 구조(원국 → 대운 → 비교 코멘트)를
         각자의 판정 기준으로 채우도록 하나의 함수로 처리합니다."""
@@ -4687,10 +4494,10 @@ class SajuApp(tk.Tk):
         a = self.a1 if is_v1 else self.a2
         s_own = self.s1 if is_v1 else self.s2
 
-        # ── 0. 이 버전이 무엇인지 안내하는 카드 ──
+
         self._build_version_intro(body, version)
 
-        # ── 1. 기본 정보 ──
+
         info, iin = card(body)
         info.pack(fill="x", pady=(0, 14))
         row = tk.Frame(iin, bg=BG_CARD)
@@ -4723,7 +4530,7 @@ class SajuApp(tk.Tk):
                 tk.Label(wf, text="⚠ " + w, bg=WARN_BG, fg=WARN_FG, wraplength=980,
                          justify="left", font=(KOR_FONT, 9), padx=10, pady=4).pack(anchor="w")
 
-        # ── 1-1. 신살(神殺) — 원국 기준, V1/V2 공통 ──
+
         sinsal_list = detect_sinsal(chart)
         if sinsal_list:
             seen_names = []
@@ -4750,7 +4557,7 @@ class SajuApp(tk.Tk):
                               "참고용으로만 보세요.",
                      bg=BG_CARD, fg=TEXT_MUTE, font=(KOR_FONT, 8)).pack(anchor="w", pady=(6, 0))
 
-        # ── 2. 오행 분포 + 나는 어떤 사람인가 (이 버전 강약·용신 기준) ──
+
         mid = tk.Frame(body, bg=BG_ROOT)
         mid.pack(fill="x")
 
@@ -4797,7 +4604,7 @@ class SajuApp(tk.Tk):
                  bg=BG_CARD, fg=ELEM_COLOR.get(delem, TEXT_MAIN),
                  font=(KOR_FONT, 10, "bold")).pack(anchor="w", pady=(12, 0))
 
-        # ── 3. 생활 속 처방 (이 버전 용신 기준) ──
+
         if a.yongsin:
             acard, ain = card(body)
             acard.pack(fill="x", pady=(14, 0))
@@ -4821,7 +4628,7 @@ class SajuApp(tk.Tk):
                               "실제 결과를 바꾸는 수단으로 여기지는 마세요.",
                      bg=BG_CARD, fg=TEXT_MUTE, font=(KOR_FONT, 8)).pack(anchor="w", pady=(10, 0))
 
-        # ── 3-1. 격국 교차검증 (V2 전용 — 억부 외 다른 유파와 비교) ──
+
         gk = getattr(a, "gyeokguk", None)
         if gk:
             VERDICT_COLOR = {"일치": "#2E7D32", "상충": "#B03A2E",
@@ -4844,7 +4651,7 @@ class SajuApp(tk.Tk):
                               "구간이니 참고만 하고 단정하지는 마세요.",
                      bg=BG_CARD, fg=TEXT_MUTE, font=(KOR_FONT, 8)).pack(anchor="w", pady=(8, 0))
 
-        # ── 4. 대운 흐름 (이 버전 점수만) ──
+
         age = self.today_age
         tcard, tin = card(body)
         tcard.pack(fill="both", expand=True, pady=(14, 14))
@@ -4854,9 +4661,8 @@ class SajuApp(tk.Tk):
         has_rank = bool(s_own) and ("rank" in s_own[0])
         if has_rank:
             cols = ("age", "ganji", "score", "grade", "rank", "note")
-            # '순위'만 쓰면 절대 등급처럼 읽힙니다 (#5).
-            # 점수·등급은 절대(전체 기준), 순위는 이 사람의 9개 대운
-            # 안에서의 상대 위치입니다. 1위여도 등급은 '어려움'일 수 있습니다.
+
+
             heads = ["나이", "간지", "절대점수", "절대등급", "상대순위", "비고"]
         else:
             cols = ("age", "ganji", "score", "grade", "note")
@@ -4906,7 +4712,7 @@ class SajuApp(tk.Tk):
         detail_holder["frame"] = ddetail
         h3(ddetail, "대운을 선택하면 상세 근거가 여기 표시됩니다.").pack(anchor="w")
 
-        # ── 5. V1 · V2 비교 코멘트 (표가 아닌 문장) ──
+
         self._build_comparison_comment(body, version)
 
     def _build_version_intro(self, parent, version):
@@ -4948,7 +4754,7 @@ class SajuApp(tk.Tk):
 
         lines = []
 
-        # 강약 판정 비교
+
         if a1.strength.label == a2.strength.label:
             lines.append(f"강약 판정은 V1({a1.strength.ratio:.0%})과 V2({a2.strength.ratio:.0%}) "
                          f"모두 '{a1.strength.label}'으로 같은 결론을 냅니다.")
@@ -4960,7 +4766,7 @@ class SajuApp(tk.Tk):
             lines.append(f"V2는 '{a2.special['name']}' 격으로 판정되어, "
                          f"일반적인 억부 판정과는 결론이 반전됩니다.")
 
-        # 용신 비교
+
         y1, y2 = set(a1.yongsin), set(a2.yongsin)
         if y1 == y2:
             lines.append(f"도움이 되는 기운(용신)도 V1·V2가 "
@@ -4969,7 +4775,7 @@ class SajuApp(tk.Tk):
             lines.append(f"도움이 되는 기운(용신)은 V1이 {'·'.join(a1.yongsin) or '뚜렷하지 않음'}, "
                          f"V2가 {'·'.join(a2.yongsin) or '뚜렷하지 않음'}으로 차이가 있습니다.")
 
-        # 대운 판정 뒤집힘 구간
+
         flips = []
         for x, y in zip(s1, s2):
             if (x["score"] > 0.2) != (y["score"] > 0.2) and abs(x["score"] - y["score"]) > 0.3:
@@ -5012,7 +4818,7 @@ class SajuApp(tk.Tk):
                   lbl.configure(wraplength=max(140, e.width - 20)), add="+")
         tk.Label(c, text="", bg=BG_CARD_ALT).pack(pady=4)
 
-        # ── 1년 주기 흐름 (세운) — v2 판정에서만 채점 가능합니다.
+
         if isinstance(analysis, AnalysisV2):
             self._build_seun_detail(holder, x, analysis)
         else:
@@ -5024,7 +4830,7 @@ class SajuApp(tk.Tk):
         """선택한 대운(10년) 구간의 1년 단위 세운 흐름을 하단에 표시."""
         ch = a2.chart
         birth_year = ch.birth_local.year
-        start_year = birth_year + x["age"] - 1     # 세는나이 기준 대운 시작 연도
+        start_year = birth_year + x["age"] - 1
         rows = score_seun_range(a2, start_year, count=10)
 
         sc = tk.Frame(holder, bg=BG_CARD_ALT)
@@ -5064,12 +4870,7 @@ class SajuApp(tk.Tk):
         h3(seun_note_holder, "행을 선택하면 그 해의 판단 근거가 표시됩니다.")\
             .pack(anchor="w")
 
-        # 세운 행을 클릭할 때마다 안의 라벨은 destroy 되지만 이 holder 자체는
-        # 계속 재사용됩니다. <Configure> 를 클릭할 때마다 add="+" 로 새로 붙이면
-        # 예전에 destroy 된 라벨을 참조하는 죽은 콜백이 계속 쌓여서, 나중에
-        # 리사이즈될 때 이미 없는 위젯을 configure 하려다 TclError 가 납니다.
-        # 그래서 바인딩은 여기서 딱 한 번만 걸고, "현재 라벨 목록"은
-        # holder._wrap_labels 에 담아 매번 갱신하는 방식으로 바꿨습니다.
+
         seun_note_holder._wrap_labels = []
 
         def _on_note_holder_configure(event, nh=seun_note_holder):
@@ -5099,7 +4900,7 @@ class SajuApp(tk.Tk):
                             font=(KOR_FONT, 8), wraplength=width, justify="left")
             nlbl.pack(anchor="w", pady=1, fill="x")
             labels.append(nlbl)
-        holder._wrap_labels = labels   # <Configure> 바인딩(위)이 이 목록을 참조합니다.
+        holder._wrap_labels = labels
 
 
 def main():

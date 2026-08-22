@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 streamlit_app.py — 사주풀이 웹앱 (Streamlit)
 
@@ -50,9 +48,7 @@ from saju_app import (
     IP_LOOKUP_TIMEOUT_SEC,
 )
 
-# 등급 이름 순화표 — "좋고 나쁨"이 아니라 그 시기에 필요한 태도를 알려주는
-# 이름으로 바꿉니다. 표준 명리 용어(구 라벨)는 괄호로 병기해서, 다른 자료나
-# 사람과 이야기할 때 소통에 문제가 없도록 합니다.
+
 GRADE_FRIENDLY = {
     "매우 좋음": {
         "label": "순항기",
@@ -108,10 +104,7 @@ GRADE_LEGEND_TEXT = (
     + "\n"
 )
 
-# TXT/PDF 본문 안의 대운·세운 줄만 정확히 골라 등급을 순화합니다.
-# 이 리포트에서 등급 뒤에 막대그래프(█░ 20칸)가 붙는 자리는 대운/세운
-# 줄뿐이라("격국 교차검증 · 보통" 같은 문장에는 막대가 없음), 이 패턴만
-# 골라 바꾸면 다른 문장을 건드릴 위험 없이 안전합니다.
+
 _GRADE_LINE_RE = re.compile(
     r"([█░]{20} )("
     + "|".join(re.escape(g) for g in sorted(GRADE_FRIENDLY, key=len, reverse=True))
@@ -124,9 +117,7 @@ def patch_grade_lines(text):
         return m.group(1) + friendly_grade_label(m.group(2))
     return _GRADE_LINE_RE.sub(_sub, text)
 
-# ──────────────────────────────────────────────────────────────
-# 기본 설정
-# ──────────────────────────────────────────────────────────────
+
 st.set_page_config(
     page_title="사주풀이",
     page_icon="🀄",
@@ -142,9 +133,6 @@ except Exception:
     _PDF_FONT_OK = False
 
 
-# ──────────────────────────────────────────────────────────────
-# 한지·먹빛 테마 CSS (항상 라이트 — 기기/앱 다크모드와 무관하게 고정)
-# ──────────────────────────────────────────────────────────────
 CUSTOM_CSS = """
 <style>
 :root {
@@ -297,14 +285,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ──────────────────────────────────────────────────────────────
-# 입력 폼
-# ──────────────────────────────────────────────────────────────
+
 CITIES = list_cities()
 DEFAULT_CITY_IDX = CITIES.index("서울") if "서울" in CITIES else 0
 
 CUR_YEAR = date.today().year
-YEARS = list(range(CUR_YEAR, 1899, -1))          # 최근 연도부터 역순
+YEARS = list(range(CUR_YEAR, 1899, -1))
 DEFAULT_YEAR_IDX = YEARS.index(1990) if 1990 in YEARS else 0
 
 st.markdown(
@@ -381,9 +367,7 @@ with st.expander("시간 설정 — 결과가 다르게 나온다면 여기를 �
              "보정합니다. 명리 실무에서는 대개 생략하는 값이라 기본은 꺼둡니다.",
     )
 
-# 지금 입력값 전체를 하나의 지문(fingerprint)으로 묶어서, 마지막으로 계산했던
-# 입력과 완전히 같으면 버튼을 눌러도 재계산·재로그를 하지 않도록 막습니다.
-# 입력을 하나라도 바꾸면 지문이 달라져 버튼이 다시 눌립니다.
+
 current_input_hash = hash((
     birth_year, birth_month, birth_day, birth_hour, birth_minute,
     gender_label, place, jasi_school, apply_longitude, apply_eot,
@@ -414,9 +398,9 @@ def _log_usage(chart):
     try:
         log_secret = st.secrets.get("LOG_SECRET", "")
     except Exception:
-        log_secret = ""  # secrets.toml이 아예 없는 로컬 환경 등 — 조용히 로그 생략
+        log_secret = ""
     if not log_secret:
-        return  # 비밀 토큰이 설정 안 돼 있으면 로그를 남기지 않습니다.
+        return
 
     def _send():
         try:
@@ -448,7 +432,7 @@ def _log_usage(chart):
             )
             urllib.request.urlopen(req, timeout=LOG_TIMEOUT_SEC)
         except Exception:
-            pass  # 로그 실패는 조용히 무시 — 사용자 계산 흐름을 막지 않습니다.
+            pass
 
     threading.Thread(target=_send, daemon=True).start()
 
@@ -473,9 +457,7 @@ if submitted:
         st.session_state.pop("chart", None)
         st.session_state.pop("last_input_hash", None)
 
-# ──────────────────────────────────────────────────────────────
-# 결과 표시 — V2 상세를 텍스트 대신 정렬이 깨지지 않는 HTML로 구성
-# ──────────────────────────────────────────────────────────────
+
 def render_pillars_table_html(chart):
     """원국(년·월·일·시) 표를 HTML 테이블로."""
     labels = ["년주", "월주", "일주", "시주"]
@@ -698,7 +680,6 @@ def render_daeun_section(chart, a2, scores2):
                 )
 
 
-
 def augment_grades_in_json(chart, a2):
     """export_dict() 결과를 그대로 두되, grade가 있는 자리마다 grade_friendly·
     grade_advice 필드를 안전하게 덧붙입니다. 원래 grade 값은 그대로 남겨서
@@ -730,7 +711,7 @@ def augment_grades_in_json(chart, a2):
 def _pdf_font(bold=False):
     if not _PDF_FONT_OK:
         return "Helvetica-Bold" if bold else "Helvetica"
-    return "NotoSansKR"  # 번들 폰트가 굵기 변형이 없어 bold도 같은 폰트를 씁니다
+    return "NotoSansKR"
 
 
 def _pdf_wrap(text, font, size, max_width):
@@ -791,7 +772,7 @@ class PdfWriter:
     def section_title(self, s):
         self.ensure_space(24)
         self.c.setFont(_pdf_font(bold=True), 13)
-        self.c.setFillColorRGB(0.85, 0.35, 0.19)  # 주색
+        self.c.setFillColorRGB(0.85, 0.35, 0.19)
         self.c.drawString(self.x0, self.y, s)
         self.y -= 18
 
@@ -835,7 +816,7 @@ class PdfWriter:
                 self.c.setFont(font, size)
                 self.c.setFillColorRGB(0.17, 0.17, 0.16)
                 self.c.drawCentredString(cx, row_y - row_h + (5 if size > 9 else 7), str(v))
-        # 표 테두리
+
         self.c.setStrokeColorRGB(0.82, 0.78, 0.7)
         self.c.setLineWidth(0.5)
         for ri in range(len(rows) + 1):
@@ -890,12 +871,12 @@ class PdfWriter:
         return self.buf.getvalue()
 
 
-def build_pdf_report(chart, a1, a2, scores1, scores2, title):
+def build_pdf_report(chart, a2, scores2, title):
     """리포트를 텍스트 덤프가 아니라 실제 표·막대 도형으로 그립니다.
     한글·영문 폭 차이 때문에 줄이 어긋나는 문제를 원천적으로 피합니다."""
     w = PdfWriter()
 
-    # ── 표지 ──
+
     w.text(title, size=15, bold=True, color=(0.17, 0.17, 0.16), gap=20)
     w.text(
         f"출생 {chart.birth_local:%Y-%m-%d %H:%M} ({'남성' if chart.is_male else '여성'}) · "
@@ -904,14 +885,14 @@ def build_pdf_report(chart, a1, a2, scores1, scores2, title):
     )
     w.spacer(10)
 
-    # ── 등급 안내 ──
+
     w.section_title("등급 이름 안내")
     legend_lines = ["등급은 좋고 나쁨이 아니라 그 시기에 필요한 태도를 알려주는 이름입니다."]
     for raw, info in GRADE_FRIENDLY.items():
         legend_lines.append(f"· {info['label']} ({raw}) — {info['desc']}. {info['tip']}")
     w.info_box(legend_lines)
 
-    # ── V2 원국 ──
+
     w.section_title("V2 — 원국(사주 네 기둥)")
     w.pillars_table(chart)
 
@@ -940,7 +921,7 @@ def build_pdf_report(chart, a1, a2, scores1, scores2, title):
         w.text(f"· {r}", size=8.5, color=(0.30, 0.30, 0.28), gap=12, indent=4)
     w.spacer(6)
 
-    # ── 대운 ──
+
     w.section_title("V2 — 대운 (10년 주기)")
     today_age = date.today().year - chart.birth_local.year + 1
     for s in scores2:
@@ -959,27 +940,34 @@ def build_pdf_report(chart, a1, a2, scores1, scores2, title):
             w.text(f"· {n}", size=8, color=(0.45, 0.44, 0.42), gap=10.5, indent=6)
         w.spacer(5)
 
-    # ── V1 요약 ──
-    w.spacer(6)
-    w.section_title("V1 — 간편 결과 요약 (참고용)")
-    st1 = a1.strength
-    w.text(
-        f"강약: {st1.label} · 아군 {st1.ally:.1f} vs 적군 {st1.enemy:.1f} ({st1.ratio:.0%})",
-        size=9.5, bold=True, gap=14,
-    )
-    if a1.yongsin:
-        w.text(f"용신: {', '.join(a1.yongsin)}", size=8.5)
-    w.spacer(3)
-    for s in scores1:
-        age_start = s["age"]
-        w.bar_row(
-            f"{age_start}~{age_start + 9}세 {s['pillar'].hanja}",
-            s["percent"],
-            note=f"{friendly_grade_label(s['grade'])} {s['stars']}",
-            label_w=85, bar_w=130,
-        )
 
-    # ── 꼬리말 ──
+    w.spacer(6)
+    w.section_title("V2 — 세운 (1년 주기, 오늘 기준)")
+    w.text(
+        "세운은 대운과 다른 축입니다. 10년의 배경과 그 해의 사건은 층이 달라서, "
+        "두 값을 더하거나 평균 내면 근거 없는 숫자가 됩니다. 따로 읽으세요.",
+        size=8.3, color=(0.45, 0.44, 0.42), gap=11,
+    )
+    w.spacer(3)
+    seun_start_year = date.today().year
+    seun_rows = score_seun_range(a2, seun_start_year, 10)
+    for r in seun_rows:
+        r_age = r["year"] - chart.birth_local.year + 1
+        is_this_year = r["year"] == date.today().year
+        w.ensure_space(38)
+        mark = "▶ " if is_this_year else ""
+        daeun_txt = f" · 대운 {r['daeun'].hanja}" if r["daeun"] else ""
+        w.text(
+            f"{mark}{r['year']}년 · {r['pillar'].hanja} · {r_age}세{daeun_txt} · "
+            f"{friendly_grade_label(r['grade'])} {r['stars']}",
+            size=9.5, bold=True, gap=14,
+        )
+        w.bar_row("", r["percent"], note=f"{r['percent']}%")
+        for n in r["notes"][:2]:
+            w.text(f"· {n}", size=8, color=(0.45, 0.44, 0.42), gap=10.5, indent=6)
+        w.spacer(5)
+
+
     w.spacer(10)
     w.hr()
     w.text(DISCLAIMER, size=7.5, color=(0.55, 0.53, 0.48), gap=10)
@@ -1007,7 +995,7 @@ if "chart" in st.session_state:
         unsafe_allow_html=True,
     )
 
-    # ── V2 (우선 노출) ──────────────────────────────────────
+
     nickname, temperament = ILGAN_DESC[chart.day_gan]
     special_note = f" · 특수격({a2.special['name']})" if a2.special else ""
     st.markdown(
@@ -1031,14 +1019,14 @@ if "chart" in st.session_state:
         st.caption("V1은 억부용신만 반영한 간단 버전입니다. 기준으로는 위 V2를 참고하세요.")
         render_v1_detail(chart, a1, scores1)
 
-    # ── 내보내기 ────────────────────────────────────────────
+
     st.markdown("#### 결과 내보내기")
     json_str = augment_grades_in_json(chart, a2)
     txt_str = GRADE_LEGEND_TEXT + "\n" + patch_grade_lines(
         export_text(chart, a2=a2, today=date.today())
     )
     pdf_bytes = build_pdf_report(
-        chart, a1, a2, scores1, scores2,
+        chart, a2, scores2,
         f"사주풀이 결과 — {chart.birth_local:%Y-%m-%d %H:%M}",
     )
 
