@@ -40,6 +40,10 @@ from saju_app import (
     JIJANGGAN,
     GAN_H,
     _theme,
+    _conclusion,
+    strength_robustness,
+    scan_daeun_hwaguk,
+    __version__,
     DISCLAIMER,
     LOG_WEBHOOK_URL,
     LOG_INCLUDE_IP,
@@ -743,15 +747,21 @@ class PdfWriter:
         self.x0 = self.margin
         self.x1 = self.W - self.margin
         self.y = self.H - self.margin
+        self._font, self._size = _pdf_font(), 9
+
+    def _set_font(self, font, size):
+        self._font, self._size = font, size
+        self.c.setFont(font, size)
 
     def ensure_space(self, needed):
         if self.y - needed < self.margin:
             self.c.showPage()
             self.y = self.H - self.margin
+            self.c.setFont(self._font, self._size)
 
     def text(self, s, size=9, bold=False, color=(0.17, 0.17, 0.16), gap=13, indent=0):
         font = _pdf_font(bold)
-        self.c.setFont(font, size)
+        self._set_font(font, size)
         self.c.setFillColorRGB(*color)
         for raw_line in s.splitlines() or [""]:
             for line in _pdf_wrap(raw_line, font, size, self.x1 - self.x0 - indent):
@@ -771,7 +781,7 @@ class PdfWriter:
 
     def section_title(self, s):
         self.ensure_space(24)
-        self.c.setFont(_pdf_font(bold=True), 13)
+        self._set_font(_pdf_font(bold=True), 13)
         self.c.setFillColorRGB(0.85, 0.35, 0.19)
         self.c.drawString(self.x0, self.y, s)
         self.y -= 18
@@ -807,13 +817,13 @@ class PdfWriter:
         for ri, (row_label, values) in enumerate(rows):
             row_y = top - ri * row_h
             if row_label:
-                self.c.setFont(font, 8.5)
+                self._set_font(font, 8.5)
                 self.c.setFillColorRGB(0.37, 0.36, 0.35)
                 self.c.drawCentredString(self.x0 + col0_w / 2, row_y - row_h + 7, row_label)
             for ci, v in enumerate(values):
                 cx = self.x0 + col0_w + ci * col_w + col_w / 2
                 size = 13 if ri in (1, 2) else 8.5
-                self.c.setFont(font, size)
+                self._set_font(font, size)
                 self.c.setFillColorRGB(0.17, 0.17, 0.16)
                 self.c.drawCentredString(cx, row_y - row_h + (5 if size > 9 else 7), str(v))
 
@@ -832,7 +842,7 @@ class PdfWriter:
         self.ensure_space(16)
         font = _pdf_font()
         bar_w = bar_w or (self.x1 - self.x0 - label_w - 56)
-        self.c.setFont(font, 8.3)
+        self._set_font(font, 8.3)
         self.c.setFillColorRGB(0.17, 0.17, 0.16)
         self.c.drawString(self.x0, self.y, label)
         bx = self.x0 + label_w
@@ -845,7 +855,7 @@ class PdfWriter:
         if fw > 0:
             self.c.roundRect(bx, by, fw, bh, 3, fill=1, stroke=0)
         self.c.setFillColorRGB(0.37, 0.36, 0.35)
-        self.c.setFont(font, 8.3)
+        self._set_font(font, 8.3)
         self.c.drawString(bx + bar_w + 6, self.y, note or f"{round(pct)}%")
         self.y -= 15
 
@@ -859,7 +869,7 @@ class PdfWriter:
         self.c.setFillColorRGB(0.98, 0.93, 0.85)
         self.c.roundRect(self.x0, self.y - h, self.x1 - self.x0, h, 5, fill=1, stroke=0)
         ty = self.y - pad - 8
-        self.c.setFont(font, size)
+        self._set_font(font, size)
         self.c.setFillColorRGB(0.17, 0.17, 0.16)
         for ln in wrapped:
             self.c.drawString(self.x0 + pad, ty, ln)
@@ -901,19 +911,45 @@ def build_pdf_report(chart, a2, scores2, title):
     total = sum(counts.values()) or 1
     for e in OHAENG:
         w.bar_row(e, counts[e] / total * 100)
-    w.spacer(4)
+    w.spacer(6)
+
+    w.section_title("나는 어떤 사람인가")
+    nick, desc = ILGAN_DESC[chart.day_gan]
+    w.text(f"일간 {GAN_H[chart.day_gan]}({chart.day_ohaeng}) — {nick}", size=10, bold=True, gap=14)
+    w.text(desc, size=9, gap=13)
+    w.spacer(3)
 
     st_ = a2.strength
     w.text(
         f"강약: {st_.label} · 아군 {st_.ally:.1f} vs 적군 {st_.enemy:.1f} ({st_.ratio:.0%})",
         size=10, bold=True, gap=15,
     )
+    w.text(st_.description, size=8.7, color=(0.37, 0.36, 0.35), gap=12)
+    if st_.confidence != "확실":
+        w.text(
+            f"⚠ 판정 신뢰도: 경계 — '{st_.alt_label}'과의 경계 구간입니다. "
+            "두 시나리오가 갈리는 구간은 다른 근거로 함께 판단하세요.",
+            size=8.3, color=(0.71, 0.17, 0.07), gap=12,
+        )
+    if a2.special:
+        w.text(f"★ {a2.special['name']} 로 판정 — 억부 결론을 반전시킵니다.", size=8.7)
+    if a2.johu_note:
+        w.text(a2.johu_note, size=8.7, color=(0.37, 0.36, 0.35), gap=12)
+    if a2.gyeokguk:
+        gk = a2.gyeokguk
+        w.spacer(2)
+        w.text(f"격국 교차검증: {gk['gyeok_name']} · {gk['verdict']}", size=9, bold=True, gap=13)
+        w.text(gk["note"], size=8.3, color=(0.37, 0.36, 0.35), gap=11.5, indent=4)
+    w.spacer(4)
+
     if a2.yongsin:
         w.text(f"용신(도움되는 기운): {', '.join(a2.yongsin)}", size=9, color=(0.15, 0.31, 0.04))
+        d, col, thing, _o = OHAENG_ADVICE[a2.yongsin[0]]
+        w.text(f"→ 방위 {d} / 색 {col} / {thing} 가까이", size=8.3, color=(0.37, 0.36, 0.35), indent=6)
     if a2.gisin:
         w.text(f"기신(피해야 할 기운): {', '.join(a2.gisin)}", size=9, color=(0.71, 0.17, 0.07))
-    if a2.special:
-        w.text(f"특수격(종격): {a2.special['name']} — {a2.special['reason']}", size=9)
+        _d, _c, _t, organ = OHAENG_ADVICE[a2.gisin[0]]
+        w.text(f"→ 건강은 {organ} 계통을 특히 살피세요", size=8.3, color=(0.37, 0.36, 0.35), indent=6)
     w.spacer(4)
 
     w.text("판정 근거", size=9.5, bold=True, gap=16)
@@ -968,9 +1004,87 @@ def build_pdf_report(chart, a2, scores2, title):
         w.spacer(5)
 
 
+    w.spacer(6)
+    hwaguk_hits = scan_daeun_hwaguk(a2)
+    hwaguk_meaningful = {
+        k: v for k, v in hwaguk_hits.items()
+        if v["yongsin_changed"] or v["label_changed"]
+    }
+    if hwaguk_meaningful:
+        w.section_title("化局 구간 — 참고 판정")
+        w.text(
+            "대운이 원국과 삼합·방합을 완성시켜 특정 오행이 일시적으로 판을 "
+            "지배하는 구간입니다. 위 대운 점수·등급은 원국 용신 기준의 정본이고, "
+            "이 표시는 '그 10년은 잣대 자체가 흔들릴 수 있다'는 참고입니다. "
+            "둘을 합산하지 마세요.",
+            size=8.3, color=(0.45, 0.44, 0.42), gap=11,
+        )
+        w.spacer(3)
+        daeun_by_age = dict(chart.daeun)
+        for age_start in sorted(hwaguk_meaningful):
+            h = hwaguk_meaningful[age_start]
+            pillar = daeun_by_age[age_start]
+            w.ensure_space(30)
+            w.text(f"● {age_start}~{age_start + 9}세 · {pillar.hanja}", size=9.5, bold=True, gap=14)
+            label_note = (
+                "   ※ 참고 라벨 — 원국 분포 기준 밴드라 운 수치에 그대로 적용되지 않음"
+                if h["label_changed"] else ""
+            )
+            w.text(
+                f"강약 {h['base_label']}({h['base_ratio']:.0%}) → "
+                f"{h['label']}({h['ratio']:.0%}){label_note}",
+                size=8.3, color=(0.37, 0.36, 0.35), gap=11.5, indent=4,
+            )
+            if h["yongsin_changed"]:
+                w.text(
+                    f"용신 {'·'.join(h['base_yongsin']) or '없음'} → "
+                    f"{'·'.join(h['yongsin']) or '없음'}",
+                    size=8.3, color=(0.37, 0.36, 0.35), gap=11.5, indent=4,
+                )
+            for e in h["events"]:
+                w.text(e, size=8, color=(0.45, 0.44, 0.42), gap=10.5, indent=6)
+            w.spacer(4)
+
+    w.spacer(6)
+    w.section_title("종합 결론")
+    today_age = date.today().year - chart.birth_local.year + 1
+    for s in scores2:
+        s["theme"] = _theme(a2, s["pillar"])
+    for para in _conclusion(chart, a2, scores2, today_age):
+        w.text(para, size=9, gap=13)
+        w.spacer(4)
+
+    if chart.warnings:
+        w.spacer(4)
+        w.text("⚠ 계산상 주의사항", size=9.5, bold=True, gap=14)
+        for warn in chart.warnings:
+            w.text(f"· {warn}", size=8.3, color=(0.55, 0.20, 0.10), gap=11.5, indent=4)
+
     w.spacer(10)
     w.hr()
     w.text(DISCLAIMER, size=7.5, color=(0.55, 0.53, 0.48), gap=10)
+    w.spacer(4)
+    meta = export_dict(
+        chart, a2=a2, today=date.today(),
+        include_seun=False, include_hwaguk=False, include_robustness=True,
+    )["meta"]
+    rb = strength_robustness(chart)
+    w.text(
+        f"엔진 {meta['engine_version']} / tzdata {meta['tzdata_version']} / "
+        f"계수지문 {meta['coefficients']['sha256'][:12]}…",
+        size=7, color=(0.6, 0.58, 0.53), gap=9.5,
+    )
+    w.text(
+        f"자시학파 {chart.jasi_school} / "
+        f"경도보정 {'켬' if chart.options.get('apply_longitude') else '끔'} / "
+        f"균시차 {'켬' if chart.options.get('apply_eot') else '끔'} / 지역 {chart.place.name}",
+        size=7, color=(0.6, 0.58, 0.53), gap=9.5,
+    )
+    w.text(
+        f"강약 판정 견고성: {rb['verdict']} "
+        f"(계수 ±20% 섭동 {rb['n_tested']}회 중 {rb['n_flipped']}회 변동)",
+        size=7, color=(0.6, 0.58, 0.53), gap=9.5,
+    )
 
     return w.save()
 
