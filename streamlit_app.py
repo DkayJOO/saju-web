@@ -143,7 +143,7 @@ except Exception:
 
 
 # ──────────────────────────────────────────────────────────────
-# 한지·먹빛 테마 CSS (라이트: 한지+주색, 다크: 먹지+금박)
+# 한지·먹빛 테마 CSS (항상 라이트 — 기기/앱 다크모드와 무관하게 고정)
 # ──────────────────────────────────────────────────────────────
 CUSTOM_CSS = """
 <style>
@@ -155,17 +155,7 @@ CUSTOM_CSS = """
     --seal: #D85A30;
     --seal-dark: #712B13;
     --seal-text: #4A1B0C;
-}
-@media (prefers-color-scheme: dark) {
-    :root {
-        --hanji-bg: #17150F;
-        --hanji-card: #241F16;
-        --ink: #F1EFE8;
-        --ink-soft: #C9B896;
-        --seal: #FAC775;
-        --seal-dark: #EF9F27;
-        --seal-text: #FAC775;
-    }
+    color-scheme: light;
 }
 .stApp {
     background-color: var(--hanji-bg);
@@ -281,10 +271,6 @@ h1, h2, h3 { color: var(--ink) !important; }
 .chip-yong { background: #EAF3DE; color: #27500A; }
 .chip-gi { background: #FAECE7; color: #4A1B0C; }
 .chip-neu { background: rgba(128,128,128,0.15); color: var(--ink-soft); }
-@media (prefers-color-scheme: dark) {
-    .chip-yong { background: #173404; color: #C0DD97; }
-    .chip-gi { background: #4A1B0C; color: #F5C4B3; }
-}
 
 .reason-list { font-size: 13px; color: var(--ink); line-height: 1.8; padding-left: 18px; margin: 0 0 12px; }
 
@@ -649,7 +635,7 @@ def render_v1_detail(chart, a1, scores1):
     st.markdown("**판정 근거 (V1)**", unsafe_allow_html=True)
     st.markdown(render_reasons_html(a1.reasons), unsafe_allow_html=True)
 
-    st.markdown("**V1 분석에 따른 (10년 주기) 운세 요약**", unsafe_allow_html=True)
+    st.markdown("**V1 분석에 따른 대운 (10년 주기) 요약**", unsafe_allow_html=True)
     today_age = date.today().year - chart.birth_local.year + 1
     st.markdown(render_daeun_table_html(scores1, today_age), unsafe_allow_html=True)
 
@@ -741,34 +727,264 @@ def augment_grades_in_json(chart, a2):
     return json.dumps(data, ensure_ascii=False, indent=1, default=str)
 
 
-def make_pdf_bytes(title, text):
-    """리포트 텍스트(TXT)를 그대로 PDF 페이지에 옮겨 담습니다."""
-    font_name = "NotoSansKR" if _PDF_FONT_OK else "Helvetica"
-    buf = io.BytesIO()
-    c = pdfcanvas.Canvas(buf, pagesize=A4)
-    width, height = A4
-    margin_x, margin_top, margin_bottom = 40, 40, 40
-    font_size, line_gap = 9, 13
+def _pdf_font(bold=False):
+    if not _PDF_FONT_OK:
+        return "Helvetica-Bold" if bold else "Helvetica"
+    return "NotoSansKR"  # 번들 폰트가 굵기 변형이 없어 bold도 같은 폰트를 씁니다
 
-    c.setFont(font_name, 13)
-    c.drawString(margin_x, height - margin_top, title)
-    y = height - margin_top - 26
-    c.setFont(font_name, font_size)
 
-    max_chars = int((width - 2 * margin_x) / (font_size * 0.62))
-    for raw_line in text.splitlines():
-        line = raw_line if raw_line else " "
-        chunks = [line[i:i + max_chars] for i in range(0, len(line), max_chars)] or [" "]
-        for chunk in chunks:
-            if y < margin_bottom:
-                c.showPage()
-                c.setFont(font_name, font_size)
-                y = height - margin_top
-            c.drawString(margin_x, y, chunk)
-            y -= line_gap
+def _pdf_wrap(text, font, size, max_width):
+    """실제 렌더링 폭(stringWidth)을 기준으로 줄바꿈 — 한글/영문 폭 차이와
+    무관하게 항상 여백 안에 맞춰집니다."""
+    lines, cur = [], ""
+    for ch in text:
+        trial = cur + ch
+        if pdfmetrics.stringWidth(trial, font, size) > max_width and cur:
+            lines.append(cur)
+            cur = ch
+        else:
+            cur = trial
+    if cur:
+        lines.append(cur)
+    return lines or [""]
 
-    c.save()
-    return buf.getvalue()
+
+class PdfWriter:
+    """A4 페이지에 커서(y)를 관리하며 그리는 얇은 헬퍼. 텍스트를 문자수가
+    아니라 실제 폭으로 줄바꿈하고, 표·막대는 도형으로 직접 그려서
+    한글/영문 폭 차이로 인한 정렬 깨짐을 원천적으로 피합니다."""
+
+    def __init__(self):
+        self.buf = io.BytesIO()
+        self.c = pdfcanvas.Canvas(self.buf, pagesize=A4)
+        self.W, self.H = A4
+        self.margin = 42
+        self.x0 = self.margin
+        self.x1 = self.W - self.margin
+        self.y = self.H - self.margin
+
+    def ensure_space(self, needed):
+        if self.y - needed < self.margin:
+            self.c.showPage()
+            self.y = self.H - self.margin
+
+    def text(self, s, size=9, bold=False, color=(0.17, 0.17, 0.16), gap=13, indent=0):
+        font = _pdf_font(bold)
+        self.c.setFont(font, size)
+        self.c.setFillColorRGB(*color)
+        for raw_line in s.splitlines() or [""]:
+            for line in _pdf_wrap(raw_line, font, size, self.x1 - self.x0 - indent):
+                self.ensure_space(gap)
+                self.c.drawString(self.x0 + indent, self.y, line)
+                self.y -= gap
+
+    def spacer(self, h=6):
+        self.y -= h
+
+    def hr(self):
+        self.ensure_space(10)
+        self.c.setStrokeColorRGB(0.82, 0.78, 0.7)
+        self.c.setLineWidth(0.6)
+        self.c.line(self.x0, self.y, self.x1, self.y)
+        self.y -= 12
+
+    def section_title(self, s):
+        self.ensure_space(24)
+        self.c.setFont(_pdf_font(bold=True), 13)
+        self.c.setFillColorRGB(0.85, 0.35, 0.19)  # 주색
+        self.c.drawString(self.x0, self.y, s)
+        self.y -= 18
+
+    def pillars_table(self, chart):
+        labels = ["년주", "월주", "일주", "시주"]
+        pillars = chart.pillars
+        sip = chart.sipseong_map()
+        uns = chart.unseong_map()
+        sip_gan = ["년간", "월간", "일간", "시간"]
+        sip_ji = ["년지", "월지", "일지", "시지"]
+        uns_keys = ["년", "월", "일", "시"]
+
+        def jjg(p):
+            return "·".join(GAN_H[g] for g, _ in JIJANGGAN[p.ji])
+
+        rows = [
+            ("", labels),
+            ("천간", [GAN_H[p.gan] for p in pillars]),
+            ("지지", [p.hanja[1] for p in pillars]),
+            ("십성(간)", [sip[k] for k in sip_gan]),
+            ("십성(지)", [sip[k] for k in sip_ji]),
+            ("지장간", [jjg(p) for p in pillars]),
+            ("십이운성", [uns[k] for k in uns_keys]),
+        ]
+        col0_w = 60
+        col_w = (self.x1 - self.x0 - col0_w) / 4
+        row_h = 20
+        table_h = row_h * len(rows)
+        self.ensure_space(table_h + 6)
+        top = self.y
+        font = _pdf_font()
+        for ri, (row_label, values) in enumerate(rows):
+            row_y = top - ri * row_h
+            if row_label:
+                self.c.setFont(font, 8.5)
+                self.c.setFillColorRGB(0.37, 0.36, 0.35)
+                self.c.drawCentredString(self.x0 + col0_w / 2, row_y - row_h + 7, row_label)
+            for ci, v in enumerate(values):
+                cx = self.x0 + col0_w + ci * col_w + col_w / 2
+                size = 13 if ri in (1, 2) else 8.5
+                self.c.setFont(font, size)
+                self.c.setFillColorRGB(0.17, 0.17, 0.16)
+                self.c.drawCentredString(cx, row_y - row_h + (5 if size > 9 else 7), str(v))
+        # 표 테두리
+        self.c.setStrokeColorRGB(0.82, 0.78, 0.7)
+        self.c.setLineWidth(0.5)
+        for ri in range(len(rows) + 1):
+            ly = top - ri * row_h
+            self.c.line(self.x0, ly, self.x1, ly)
+        for ci in range(6):
+            lx = self.x0 + (col0_w if ci == 0 else col0_w + (ci - 1) * col_w)
+            self.c.line(lx, top, lx, top - table_h)
+        self.c.line(self.x1, top, self.x1, top - table_h)
+        self.y = top - table_h - 14
+
+    def bar_row(self, label, pct, note="", bar_w=None, color=(0.85, 0.35, 0.19), label_w=34):
+        self.ensure_space(16)
+        font = _pdf_font()
+        bar_w = bar_w or (self.x1 - self.x0 - label_w - 56)
+        self.c.setFont(font, 8.3)
+        self.c.setFillColorRGB(0.17, 0.17, 0.16)
+        self.c.drawString(self.x0, self.y, label)
+        bx = self.x0 + label_w
+        bh = 8
+        by = self.y - 1
+        self.c.setFillColorRGB(0.97, 0.93, 0.85)
+        self.c.roundRect(bx, by, bar_w, bh, 3, fill=1, stroke=0)
+        fw = max(0, min(bar_w, bar_w * pct / 100))
+        self.c.setFillColorRGB(*color)
+        if fw > 0:
+            self.c.roundRect(bx, by, fw, bh, 3, fill=1, stroke=0)
+        self.c.setFillColorRGB(0.37, 0.36, 0.35)
+        self.c.setFont(font, 8.3)
+        self.c.drawString(bx + bar_w + 6, self.y, note or f"{round(pct)}%")
+        self.y -= 15
+
+    def info_box(self, lines, pad=8, gap=13, size=9):
+        font = _pdf_font()
+        wrapped = []
+        for ln in lines:
+            wrapped += _pdf_wrap(ln, font, size, self.x1 - self.x0 - 2 * pad)
+        h = len(wrapped) * gap + 2 * pad
+        self.ensure_space(h + 6)
+        self.c.setFillColorRGB(0.98, 0.93, 0.85)
+        self.c.roundRect(self.x0, self.y - h, self.x1 - self.x0, h, 5, fill=1, stroke=0)
+        ty = self.y - pad - 8
+        self.c.setFont(font, size)
+        self.c.setFillColorRGB(0.17, 0.17, 0.16)
+        for ln in wrapped:
+            self.c.drawString(self.x0 + pad, ty, ln)
+            ty -= gap
+        self.y -= h + 10
+
+    def save(self):
+        self.c.save()
+        return self.buf.getvalue()
+
+
+def build_pdf_report(chart, a1, a2, scores1, scores2, title):
+    """리포트를 텍스트 덤프가 아니라 실제 표·막대 도형으로 그립니다.
+    한글·영문 폭 차이 때문에 줄이 어긋나는 문제를 원천적으로 피합니다."""
+    w = PdfWriter()
+
+    # ── 표지 ──
+    w.text(title, size=15, bold=True, color=(0.17, 0.17, 0.16), gap=20)
+    w.text(
+        f"출생 {chart.birth_local:%Y-%m-%d %H:%M} ({'남성' if chart.is_male else '여성'}) · "
+        f"{chart.place.name} · 자시기준 {chart.jasi_school}",
+        size=9, color=(0.37, 0.36, 0.35),
+    )
+    w.spacer(10)
+
+    # ── 등급 안내 ──
+    w.section_title("등급 이름 안내")
+    legend_lines = ["등급은 좋고 나쁨이 아니라 그 시기에 필요한 태도를 알려주는 이름입니다."]
+    for raw, info in GRADE_FRIENDLY.items():
+        legend_lines.append(f"· {info['label']} ({raw}) — {info['desc']}. {info['tip']}")
+    w.info_box(legend_lines)
+
+    # ── V2 원국 ──
+    w.section_title("V2 — 원국(사주 네 기둥)")
+    w.pillars_table(chart)
+
+    w.text("오행 분포 (지장간 포함 실질 비중)", size=9.5, bold=True, gap=16)
+    counts = chart.ohaeng_count(include_jijanggan=True)
+    total = sum(counts.values()) or 1
+    for e in OHAENG:
+        w.bar_row(e, counts[e] / total * 100)
+    w.spacer(4)
+
+    st_ = a2.strength
+    w.text(
+        f"강약: {st_.label} · 아군 {st_.ally:.1f} vs 적군 {st_.enemy:.1f} ({st_.ratio:.0%})",
+        size=10, bold=True, gap=15,
+    )
+    if a2.yongsin:
+        w.text(f"용신(도움되는 기운): {', '.join(a2.yongsin)}", size=9, color=(0.15, 0.31, 0.04))
+    if a2.gisin:
+        w.text(f"기신(피해야 할 기운): {', '.join(a2.gisin)}", size=9, color=(0.71, 0.17, 0.07))
+    if a2.special:
+        w.text(f"특수격(종격): {a2.special['name']} — {a2.special['reason']}", size=9)
+    w.spacer(4)
+
+    w.text("판정 근거", size=9.5, bold=True, gap=16)
+    for r in a2.reasons[:6]:
+        w.text(f"· {r}", size=8.5, color=(0.30, 0.30, 0.28), gap=12, indent=4)
+    w.spacer(6)
+
+    # ── 대운 ──
+    w.section_title("V2 — 대운 (10년 주기)")
+    today_age = date.today().year - chart.birth_local.year + 1
+    for s in scores2:
+        age_start = s["age"]
+        is_current = age_start <= today_age < age_start + 10
+        w.ensure_space(46)
+        mark = "▶ " if is_current else ""
+        w.text(
+            f"{mark}{age_start}~{age_start + 9}세 · {s['pillar'].hanja} · "
+            f"{friendly_grade_label(s['grade'])} {s['stars']}",
+            size=9.5, bold=True, gap=14,
+        )
+        w.bar_row("", s["percent"], note=f"{s['percent']}%")
+        w.text(_theme(a2, s["pillar"]), size=8.3, color=(0.37, 0.36, 0.35), gap=11, indent=4)
+        for n in s["notes"][:2]:
+            w.text(f"· {n}", size=8, color=(0.45, 0.44, 0.42), gap=10.5, indent=6)
+        w.spacer(5)
+
+    # ── V1 요약 ──
+    w.spacer(6)
+    w.section_title("V1 — 간편 결과 요약 (참고용)")
+    st1 = a1.strength
+    w.text(
+        f"강약: {st1.label} · 아군 {st1.ally:.1f} vs 적군 {st1.enemy:.1f} ({st1.ratio:.0%})",
+        size=9.5, bold=True, gap=14,
+    )
+    if a1.yongsin:
+        w.text(f"용신: {', '.join(a1.yongsin)}", size=8.5)
+    w.spacer(3)
+    for s in scores1:
+        age_start = s["age"]
+        w.bar_row(
+            f"{age_start}~{age_start + 9}세 {s['pillar'].hanja}",
+            s["percent"],
+            note=f"{friendly_grade_label(s['grade'])} {s['stars']}",
+            label_w=85, bar_w=130,
+        )
+
+    # ── 꼬리말 ──
+    w.spacer(10)
+    w.hr()
+    w.text(DISCLAIMER, size=7.5, color=(0.55, 0.53, 0.48), gap=10)
+
+    return w.save()
 
 
 if "chart" in st.session_state:
@@ -808,7 +1024,7 @@ if "chart" in st.session_state:
     with st.expander("V2 상세 리포트 펼쳐보기 (지장간·통근·계절·종격 반영)", expanded=False):
         render_v2_detail(chart, a2, scores2)
 
-    st.markdown("#### 10년 주기 운세")
+    st.markdown("#### 대운 (10년 주기)")
     render_daeun_section(chart, a2, scores2)
 
     with st.expander("V1 간편 결과 함께 보기 (더 단순한 예전 방식)"):
@@ -821,7 +1037,10 @@ if "chart" in st.session_state:
     txt_str = GRADE_LEGEND_TEXT + "\n" + patch_grade_lines(
         export_text(chart, a2=a2, today=date.today())
     )
-    pdf_bytes = make_pdf_bytes(f"사주풀이 결과 — {chart.birth_local:%Y-%m-%d %H:%M}", txt_str)
+    pdf_bytes = build_pdf_report(
+        chart, a1, a2, scores1, scores2,
+        f"사주풀이 결과 — {chart.birth_local:%Y-%m-%d %H:%M}",
+    )
 
     fname_base = f"saju_{chart.birth_local:%Y%m%d_%H%M}"
     ec1, ec2, ec3 = st.columns(3)
