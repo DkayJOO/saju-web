@@ -139,6 +139,14 @@ except Exception:
 
 CUSTOM_CSS = """
 <style>
+/* Streamlit 기본 상단 헤더, 메뉴, 깃허브 코드 보기 버튼, 하단 푸터 숨김 */
+#MainMenu {visibility: hidden !important;}
+header {visibility: hidden !important;}
+footer {visibility: hidden !important;}
+.stDeployButton {display: none !important;}
+[data-testid="stToolbar"] {visibility: hidden !important;}
+[data-testid="stHeader"] {visibility: hidden !important;}
+
 :root {
     --hanji-bg: #FBF7EE;
     --hanji-card: #FAEEDA;
@@ -858,7 +866,6 @@ def build_pdf_report(chart, a2, scores2, title):
     한글·영문 폭 차이 때문에 줄이 어긋나는 문제를 원천적으로 피합니다."""
     w = PdfWriter()
 
-
     w.text(title, size=15, bold=True, color=(0.17, 0.17, 0.16), gap=20)
     w.text(
         f"출생 {chart.birth_local:%Y-%m-%d %H:%M} ({'남성' if chart.is_male else '여성'}) · "
@@ -867,13 +874,11 @@ def build_pdf_report(chart, a2, scores2, title):
     )
     w.spacer(10)
 
-
     w.section_title("등급 이름 안내")
     legend_lines = ["등급은 좋고 나쁨이 아니라 그 시기에 필요한 태도를 알려주는 이름입니다."]
     for raw, info in GRADE_FRIENDLY.items():
         legend_lines.append(f"· {info['label']} ({raw}) — {info['desc']}. {info['tip']}")
     w.info_box(legend_lines)
-
 
     w.section_title("V2 — 원국(사주 네 기둥)")
     w.pillars_table(chart)
@@ -929,7 +934,6 @@ def build_pdf_report(chart, a2, scores2, title):
         w.text(f"· {r}", size=8.5, color=(0.30, 0.30, 0.28), gap=12, indent=4)
     w.spacer(6)
 
-
     w.section_title("V2 — 10년 주기 운세")
     today_age = date.today().year - chart.birth_local.year + 1
     for s in scores2:
@@ -947,7 +951,6 @@ def build_pdf_report(chart, a2, scores2, title):
         for n in s["notes"][:2]:
             w.text(f"· {n}", size=8, color=(0.45, 0.44, 0.42), gap=10.5, indent=6)
         w.spacer(5)
-
 
     w.spacer(6)
     w.section_title("V2 — 세운 (1년 주기, 오늘 기준)")
@@ -975,7 +978,6 @@ def build_pdf_report(chart, a2, scores2, title):
             w.text(f"· {n}", size=8, color=(0.45, 0.44, 0.42), gap=10.5, indent=6)
         w.spacer(5)
 
-
     w.spacer(6)
     hwaguk_hits = scan_daeun_hwaguk(a2)
     hwaguk_meaningful = {
@@ -999,7 +1001,7 @@ def build_pdf_report(chart, a2, scores2, title):
             w.ensure_space(30)
             w.text(f"● {age_start}~{age_start + 9}세 · {pillar.hanja}", size=9.5, bold=True, gap=14)
             label_note = (
-                "   ※ 참고 라벨 — 원국 분포 기준 밴드라 운 수치에 그대로 적용되지 않음"
+                "    ※ 참고 라벨 — 원국 분포 기준 밴드라 운 수치에 그대로 적용되지 않음"
                 if h["label_changed"] else ""
             )
             w.text(
@@ -1081,7 +1083,6 @@ if "chart" in st.session_state:
         unsafe_allow_html=True,
     )
 
-
     nickname, temperament = ILGAN_DESC[chart.day_gan]
     special_note = f" · 특수격({a2.special['name']})" if a2.special else ""
     st.markdown(
@@ -1104,7 +1105,6 @@ if "chart" in st.session_state:
     with st.expander("V1 간편 결과 함께 보기 (더 단순한 예전 방식)"):
         st.caption("V1은 억부용신만 반영한 간단 버전입니다. 기준으로는 위 V2를 참고하세요.")
         render_v1_detail(chart, a1, scores1)
-
 
     st.markdown("#### 결과 내보내기")
     json_str = augment_grades_in_json(chart, a2)
