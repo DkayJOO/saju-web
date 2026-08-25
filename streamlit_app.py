@@ -27,6 +27,7 @@ from saju_app import (
     score_all_daeun,
     score_all_daeun_v2,
     score_seun_range,
+    score_ilun_v2,
     render_text,
     render_text_v2,
     export_dict,
@@ -664,6 +665,72 @@ def render_daeun_section(chart, a2, scores2):
                 )
 
 
+def render_ilun_section(chart, a2):
+    """오늘의 운세 (하루 단위). 세운 채점 엔진을 재사용한 근사치입니다."""
+    r = score_ilun_v2(a2)
+    st.markdown(
+        "<div class='v2-card'>"
+        "<span class='v2-badge'>오늘의 운세</span>"
+        f"<p class='v2-title'>{r['date']:%Y-%m-%d} · {r['pillar'].hanja} · "
+        f"{friendly_grade_label(r['grade'])} {r['stars']}</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div style='display:flex; align-items:center; gap:8px; margin:8px 0;'>"
+        f"<div class='daeun-bar-bg'><div class='daeun-bar-fill' "
+        f"style='width:{r['percent']}%;'></div></div>"
+        f"<span style='font-size:12px; color:var(--ink-soft); width:34px; text-align:right;'>{r['percent']}%</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(grade_caption(r["grade"]))
+    if r["notes"]:
+        with st.expander("오늘의 운세 근거 보기", expanded=False):
+            st.markdown(render_reasons_html(r["notes"], limit=10), unsafe_allow_html=True)
+    st.caption(
+        "하루 단위 운세는 세운 채점 엔진을 그대로 가져다 쓰되 영향력만 줄인 "
+        "근사치입니다. 명리학에 확립된 '일운' 표준 공식은 없으니 재미로만 참고하세요."
+    )
+
+
+def render_seun_section(chart, a2, start_year=None, count=10):
+    """세운 (1년 주기, 사용일 기준). 대운(10년 주기)의 배경 없이,
+    올해부터 이어지는 흐름을 먼저 보여줍니다."""
+    today_year = date.today().year
+    if start_year is None:
+        start_year = today_year
+    rows = score_seun_range(a2, start_year, count)
+    st.caption(
+        "등급 이름은 좋고 나쁨이 아니라 그 시기에 필요한 태도를 알려줍니다. "
+        "전통 명리 용어(구)도 괄호로 함께 적어뒀어요."
+    )
+    for r in rows:
+        is_current = r["year"] == today_year
+        r_age = r["year"] - chart.birth_local.year + 1
+        daeun_txt = f" · 대운 {r['daeun'].hanja}" if r["daeun"] else ""
+        label = (
+            f"{'▶ ' if is_current else ''}{r['year']}년 · {r['pillar'].hanja} · "
+            f"{r_age}세{daeun_txt} · {friendly_grade_label(r['grade'])} {r['stars']}"
+        )
+        with st.expander(label, expanded=is_current):
+            st.markdown(
+                "<div style='display:flex; align-items:center; gap:8px; margin-bottom:8px;'>"
+                f"<div class='daeun-bar-bg'><div class='daeun-bar-fill' "
+                f"style='width:{r['percent']}%;'></div></div>"
+                f"<span style='font-size:12px; color:var(--ink-soft); width:34px; text-align:right;'>{r['percent']}%</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            st.caption(grade_caption(r["grade"]))
+            if r["notes"]:
+                st.markdown(render_reasons_html(r["notes"], limit=10), unsafe_allow_html=True)
+    st.caption(
+        "세운은 대운과 다른 축입니다. 대운은 10년의 배경, 세운은 "
+        "그 해의 흐름이라 두 점수를 더하거나 평균 내지 마세요."
+    )
+
+
 def augment_grades_in_json(chart, a2):
     """export_dict() 결과를 그대로 두되, grade가 있는 자리마다 grade_friendly·
     grade_advice 필드를 안전하게 덧붙입니다. 원래 grade 값은 그대로 남겨서
@@ -1096,15 +1163,25 @@ if "chart" in st.session_state:
         unsafe_allow_html=True,
     )
 
+    st.markdown("#### 오늘의 운세")
+    render_ilun_section(chart, a2)
+
+    st.markdown("#### 세운 (1년 주기)")
+    render_seun_section(chart, a2)
+
     with st.expander("V2 상세 리포트 펼쳐보기 (지장간·통근·계절·종격 반영)", expanded=False):
         render_v2_detail(chart, a2, scores2)
-
-    st.markdown("#### 10년 주기 운세")
-    render_daeun_section(chart, a2, scores2)
 
     with st.expander("V1 간편 결과 함께 보기 (더 단순한 예전 방식)"):
         st.caption("V1은 억부용신만 반영한 간단 버전입니다. 기준으로는 위 V2를 참고하세요.")
         render_v1_detail(chart, a1, scores1)
+
+    with st.expander("🔮 대운 (10년 주기) 보기", expanded=False):
+        st.caption(
+            "대운은 10년 단위의 큰 배경입니다. 특정 10년의 등급이 낮게 나와도, "
+            "그 안의 개별 연도(세운)는 위에서 보신 것처럼 얼마든지 다를 수 있어요."
+        )
+        render_daeun_section(chart, a2, scores2)
 
     st.markdown("#### 결과 내보내기")
     json_str = augment_grades_in_json(chart, a2)

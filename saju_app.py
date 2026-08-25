@@ -3375,6 +3375,65 @@ def score_seun_range(a2, start_year, count=10, normalize=True):
     return out
 
 
+ILUN_DAMPING = 0.5
+"""오늘(하루) 단위 채점에 곱하는 감쇠 계수.
+
+세운 채점 엔진(score_seun_v2)을 그대로 재사용하되, 하루의 영향력은
+1년보다 작게 잡아야 한다는 상식적 가정을 반영한 값입니다. 명리학에서
+'일운(하루 단위 운세)'을 정량화하는 확립된 표준 공식은 없고 유파차가
+큰 영역이라, 이 계수는 임의의 근사치입니다. 참고용으로만 쓰세요.
+"""
+
+
+def score_ilun_v2(a2, target_date=None, damping=ILUN_DAMPING):
+    """오늘(하루) 운세를 채점합니다.
+
+    세운 채점 엔진(score_seun_v2)의 천간·지지 유불리, 합·충 판정을 그대로
+    가져다 쓰되, 원(raw) 점수에 damping 을 곱해 하루라는 짧은 단위의 영향력을
+    깎습니다. target_date 를 생략하면 한국 시간 기준 오늘 날짜를 씁니다.
+
+    ※ 세운·대운과는 완전히 다른(더 가벼운) 축입니다. 세 값을 더하거나
+      평균 내지 마세요.
+    """
+    ch = a2.chart
+    if target_date is None:
+        target_date = datetime.now(ZoneInfo("Asia/Seoul")).date()
+
+    di = (_jdn(target_date) + 49) % 60
+    day_pillar = Pillar.from_gapja(di)
+
+    age = target_date.year - ch.birth_local.year + 1
+    du = ch.daeun_at(age)
+    daeun_pillar = du[1] if du else None
+
+    base = score_seun_v2(a2, day_pillar, daeun_pillar, year=None)
+
+    raw = base["raw_unclamped"] * damping
+    score = max(-1.0, min(1.0, raw))
+    percent = int(round((score + 1) * 50))
+    grade = stars = None
+    for threshold, g, s in GRADE_BANDS:
+        if score >= threshold:
+            grade, stars = g, s
+            break
+    if grade is None:
+        grade, stars = GRADE_BANDS[-1][1], GRADE_BANDS[-1][2]
+
+    notes = [n.replace("세운", "오늘") for n in base["notes"]]
+
+    return {
+        "date": target_date,
+        "pillar": day_pillar,
+        "daeun": daeun_pillar,
+        "score": score,
+        "raw_unclamped": raw,
+        "percent": percent,
+        "grade": grade,
+        "stars": stars,
+        "notes": notes,
+    }
+
+
 """
 신살은 억부·격국과는 또 다른 갈래의 명리 도구입니다. "이 사주가 강한가
 약한가"를 묻지 않고, 특정 글자 조합 자체에 전통적으로 붙어온 상징을
