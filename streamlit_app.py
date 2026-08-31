@@ -316,7 +316,7 @@ birth_year = dc1.selectbox(
     label_visibility="collapsed",
 )
 birth_month = dc2.selectbox(
-    "월", list(range(1, 13)), index=4, format_func=lambda m: f"{m}월",
+    "월", list(range(1, 13)), index=3, format_func=lambda m: f"{m}월",
     label_visibility="collapsed",
 )
 birth_day = dc3.selectbox(
