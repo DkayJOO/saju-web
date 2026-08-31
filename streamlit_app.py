@@ -304,7 +304,7 @@ DEFAULT_CITY_IDX = CITIES.index("서울") if "서울" in CITIES else 0
 
 CUR_YEAR = date.today().year
 YEARS = list(range(CUR_YEAR, 1899, -1))
-DEFAULT_YEAR_IDX = YEARS.index(1980) if 1980 in YEARS else 0
+DEFAULT_YEAR_IDX = YEARS.index(1978) if 1978 in YEARS else 0
 
 st.markdown(
     "<p style='font-size:13px; color:var(--ink-soft); margin:0 0 6px;'>생년월일 (양력)</p>",
@@ -316,11 +316,11 @@ birth_year = dc1.selectbox(
     label_visibility="collapsed",
 )
 birth_month = dc2.selectbox(
-    "월", list(range(1, 13)), index=0, format_func=lambda m: f"{m}월",
+    "월", list(range(1, 13)), index=4, format_func=lambda m: f"{m}월",
     label_visibility="collapsed",
 )
 birth_day = dc3.selectbox(
-    "일", list(range(1, 32)), index=0, format_func=lambda d: f"{d}일",
+    "일", list(range(1, 32)), index=18, format_func=lambda d: f"{d}일",
     label_visibility="collapsed",
 )
 
@@ -331,7 +331,7 @@ st.markdown(
 )
 tc1, tc2 = st.columns(2)
 birth_hour = tc1.selectbox(
-    "시", list(range(0, 24)), index=12, format_func=lambda h: f"{h}시",
+    "시", list(range(0, 24)), index=23, format_func=lambda h: f"{h}시",
     label_visibility="collapsed",
 )
 birth_minute = tc2.selectbox(
